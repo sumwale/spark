@@ -337,13 +337,14 @@ private[spark] class Executor(
     private def collectAccumulatorsAndResetStatusOnFailure(taskStartTime: Long) = {
       // Report executor runtime and JVM gc time
       Option(task).foreach(t => {
-        t.metrics.setExecutorRunTime(System.currentTimeMillis() - taskStartTime)
+        t.metrics.setExecutorRunTime(
+            math.max(System.nanoTime() - taskStartTime, 0L) / 1000000.0)
         t.metrics.setJvmGCTime(computeTotalGcTime() - startGCTime)
       })
 
       // Collect latest accumulator values to report back to the driver
       val accums: Seq[AccumulatorV2[_, _]] =
-        Option(task).map(_.collectAccumulatorUpdates(taskFailed = true)).getOrElse(Seq.empty)
+        Option(task).map(_.collectAccumulatorUpdates(taskFailed = true)).getOrElse(Nil)
       val accUpdates = accums.map(acc => acc.toInfo(Some(acc.value), None))
 
       setTaskFinishedAndClearInterruptStatus()
@@ -355,7 +356,7 @@ private[spark] class Executor(
       Thread.currentThread.setName(threadName)
       val threadMXBean = ManagementFactory.getThreadMXBean
       val taskMemoryManager = new TaskMemoryManager(env.memoryManager, taskId)
-      val deserializeStartTime = System.currentTimeMillis()
+      val deserializeStartTime = System.nanoTime()
       val deserializeStartCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
         threadMXBean.getCurrentThreadCpuTime
       } else 0L
@@ -399,7 +400,7 @@ private[spark] class Executor(
         }
 
         // Run the actual task and measure its runtime.
-        taskStartTime = System.currentTimeMillis()
+        taskStartTime = System.nanoTime()
         taskStartCpu = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
           threadMXBean.getCurrentThreadCpuTime
         } else 0L
@@ -443,7 +444,7 @@ private[spark] class Executor(
             s"unrecoverable fetch failures!  Most likely this means user code is incorrectly " +
             s"swallowing Spark's internal ${classOf[FetchFailedException]}", fetchFailure)
         }
-        val taskFinish = System.currentTimeMillis()
+        val taskFinish = System.nanoTime()
         val taskFinishCpu = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
           threadMXBean.getCurrentThreadCpuTime
         } else 0L
@@ -452,22 +453,25 @@ private[spark] class Executor(
         task.context.killTaskIfInterrupted()
 
         val resultSer = env.serializer.newInstance()
-        val beforeSerialization = System.currentTimeMillis()
+        val beforeSerialization = System.nanoTime()
         val valueBytes = resultSer.serialize(value)
-        val afterSerialization = System.currentTimeMillis()
+        val afterSerialization = System.nanoTime()
 
         // Deserialization happens in two parts: first, we deserialize a Task object, which
         // includes the Partition. Second, Task.run() deserializes the RDD and function to be run.
-        task.metrics.setExecutorDeserializeTime(
-          (taskStartTime - deserializeStartTime) + task.executorDeserializeTime)
-        task.metrics.setExecutorDeserializeCpuTime(
-          (taskStartCpu - deserializeStartCpuTime) + task.executorDeserializeCpuTime)
+        task.metrics.setExecutorDeserializeTime(math.max(
+          taskStartTime - deserializeStartTime + task.executorDeserializeTime, 0L) / 1000000.0)
+        task.metrics.setExecutorDeserializeCpuTime(math.max(
+          taskStartCpu - deserializeStartCpuTime + task.executorDeserializeCpuTime, 0L) /
+            1000000.0)
         // We need to subtract Task.run()'s deserialization time to avoid double-counting
-        task.metrics.setExecutorRunTime((taskFinish - taskStartTime) - task.executorDeserializeTime)
-        task.metrics.setExecutorCpuTime(
-          (taskFinishCpu - taskStartCpu) - task.executorDeserializeCpuTime)
+        task.metrics.setExecutorRunTime(math.max(
+          taskFinish - taskStartTime - task.executorDeserializeTime, 0L) / 1000000.0)
+        task.metrics.setExecutorCpuTime(math.max(
+          taskFinishCpu - taskStartCpu - task.executorDeserializeCpuTime, 0L) / 1000000.0)
         task.metrics.setJvmGCTime(computeTotalGcTime() - startGCTime)
-        task.metrics.setResultSerializationTime(afterSerialization - beforeSerialization)
+        task.metrics.setResultSerializationTime(math.max(
+          afterSerialization - beforeSerialization, 0L) / 1000000.0)
 
         // Expose task metrics using the Dropwizard metrics system.
         // Update task metrics counters
