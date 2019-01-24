@@ -259,9 +259,9 @@ private[spark] object UIUtils extends Logging {
     <html>
       <head>
         {commonHeaderNodes(request)}
-        {if (isSnappyPage) commonHeaderNodesSnappy(request) else Seq.empty}
-        {if (showVisualization) vizHeaderNodes(request) else Seq.empty}
-        {if (useDataTables) dataTablesHeaderNodes(request) else Seq.empty}
+        {if (showVisualization) vizHeaderNodes(request) else Nil}
+        {if (useDataTables) dataTablesHeaderNodes(request) else Nil}
+        {if (isSnappyPage) commonHeaderNodesSnappy(request) else Nil}
         <link rel="shortcut icon"
               href={prependBaseUri(request, "/static/spark-logo-77x50px-hd.png")}></link>
         <title>{appName} - {title}</title>
