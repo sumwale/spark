@@ -17,6 +17,7 @@
 package org.apache.spark.rpc.netty
 
 import java.io.File
+import java.nio.file.Paths
 import java.util.concurrent.ConcurrentHashMap
 
 import org.apache.spark.network.buffer.{FileSegmentManagedBuffer, ManagedBuffer}
@@ -65,8 +66,9 @@ private[netty] class NettyStreamManager(rpcEnv: NettyRpcEnv)
     }
   }
 
-  override def removeFile(file: File): Unit = {
-    files.remove(file.getName)
+  override def removeFile(path: String): Unit = {
+    val fileName = Paths.get(path).getFileName().toString
+    files.remove(fileName)
   }
 
   override def addFile(file: File): String = {

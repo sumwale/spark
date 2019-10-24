@@ -1506,8 +1506,7 @@ class SparkContext(config: SparkConf) extends Logging {
   }
 
   def removeFile(path: String): Unit = {
-    val uri = new Path(path).toUri
-    env.rpcEnv.fileServer.removeFile(new File(uri.getPath))
+    env.rpcEnv.fileServer.removeFile(path)
   }
 
   /**

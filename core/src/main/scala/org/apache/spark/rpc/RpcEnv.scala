@@ -206,7 +206,7 @@ private[spark] trait RpcEnvFileServer {
     fixedBaseUri
   }
 
-  def removeFile(file: File): Unit
+  def removeFile(path: String): Unit
 
 }
 
