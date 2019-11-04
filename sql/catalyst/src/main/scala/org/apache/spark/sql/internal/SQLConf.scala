@@ -175,6 +175,15 @@ object SQLConf {
     .booleanConf
     .createWithDefault(false)
 
+  val CONSTRAINT_PROPAGATION_ENABLED = SQLConfigBuilder("spark.sql.constraintPropagation.enabled")
+      .internal()
+      .doc("When true, the query optimizer will infer and propagate data constraints in the" +
+          " query plan to optimize them. Constraint propagation can sometimes be computationally" +
+          " expensive for certain kinds of query plans (such as those with a large number of" +
+          " predicates and aliases) which might negatively impact overall runtime.")
+      .booleanConf
+      .createWithDefault(true)
+
   val PARQUET_SCHEMA_MERGING_ENABLED = SQLConfigBuilder("spark.sql.parquet.mergeSchema")
     .doc("When true, the Parquet data source merges schemas collected from all data files, " +
          "otherwise the schema is picked from the summary file or a random data file " +
@@ -757,6 +766,8 @@ class SQLConf extends Serializable with Logging {
   def exchangeReuseEnabled: Boolean = getConf(EXCHANGE_REUSE_ENABLED)
 
   def caseSensitiveAnalysis: Boolean = getConf(SQLConf.CASE_SENSITIVE)
+
+  def constraintPropagationEnabled: Boolean = getConf(CONSTRAINT_PROPAGATION_ENABLED)
 
   /**
    * Returns the [[Resolver]] for the current configuration, which can be used to determine if two
