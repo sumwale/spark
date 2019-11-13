@@ -135,8 +135,12 @@ private[spark] class MetricsSystem private (
       if (metricsNamespace.isDefined && executorId.isDefined) {
         if (source.sourceName.contains("TIBCO ComputeDB") ||
             source.sourceName.contains("SnappyData")) {
+          // If sourceName contains either TIBCO ComputeDB or SnappyData then
+          // ignoring <app ID>.<executor ID (or "driver")> instead of
+          // that added unique clusterId along with sourceName
           MetricRegistry.name("", "", source.sourceName)
         } else {
+          // for default spark metrics namespace
           MetricRegistry.name(metricsNamespace.get, executorId.get, source.sourceName)
         }
       } else {
