@@ -133,7 +133,8 @@ private[spark] class MetricsSystem private (
 
     if (instance == "driver" || instance == "executor") {
       if (metricsNamespace.isDefined && executorId.isDefined) {
-        if (source.sourceName.contains("TIBCO ComputeDB")) {
+        if (source.sourceName.contains("TIBCO ComputeDB") ||
+            source.sourceName.contains("SnappyData")) {
           MetricRegistry.name("", "", source.sourceName)
         } else {
           MetricRegistry.name(metricsNamespace.get, executorId.get, source.sourceName)
