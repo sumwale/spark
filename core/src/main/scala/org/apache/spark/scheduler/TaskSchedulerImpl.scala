@@ -194,7 +194,18 @@ private[spark] class TaskSchedulerImpl(
     val tasks = taskSet.tasks
     logInfo("Adding task set " + taskSet.id + " with " + tasks.length + " tasks")
     this.synchronized {
-      val manager = createTaskSetManager(taskSet, maxTaskFailures)
+      val maxRetryAttemptsForWrite = taskSet.properties.
+        getProperty("snappydata.maxRetryAttemptsForWrite")
+
+      logInfo("The maxRetryAttemptsForWrite is set to " + maxRetryAttemptsForWrite +
+        "maxTaskFailure " + maxTaskFailures)
+      val maxRetryAttempts = if (maxRetryAttemptsForWrite != null) {
+        maxRetryAttemptsForWrite.toInt
+      } else {
+        maxTaskFailures
+      }
+
+      val manager = createTaskSetManager(taskSet, maxRetryAttempts)
       val stage = taskSet.stageId
       val stageTaskSets =
         taskSetsByStageIdAndAttempt.getOrElseUpdate(stage, new HashMap[Int, TaskSetManager])
