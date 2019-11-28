@@ -743,7 +743,7 @@ class SparkSession private(
     }
   }
 
-  updateUI();
+  // updateUI();
 
 }
 
