@@ -82,6 +82,8 @@ private[spark] class TaskSchedulerImpl(
   // How often to check for speculative tasks
   val SPECULATION_INTERVAL_MS = conf.getTimeAsMs("spark.speculation.interval", "100ms")
 
+  val SNAPPY_WRITE_RETRY_PROP = "snappydata.maxRetryAttemptsForWrite"
+
   // Duplicate copies of a task will only be launched if the original copy has been running for
   // at least this amount of time. This is to avoid the overhead of launching speculative copies
   // of tasks that are very short.
@@ -195,7 +197,7 @@ private[spark] class TaskSchedulerImpl(
     logInfo("Adding task set " + taskSet.id + " with " + tasks.length + " tasks")
     this.synchronized {
       val maxRetryAttemptsForWrite = taskSet.properties.
-        getProperty("snappydata.maxRetryAttemptsForWrite")
+        getProperty(SNAPPY_WRITE_RETRY_PROP)
 
       logInfo("The maxRetryAttemptsForWrite is set to " + maxRetryAttemptsForWrite +
         "maxTaskFailure " + maxTaskFailures)
