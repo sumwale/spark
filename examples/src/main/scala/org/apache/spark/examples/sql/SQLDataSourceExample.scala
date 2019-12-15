@@ -16,8 +16,6 @@
  */
 package org.apache.spark.examples.sql
 
-import java.util.Properties
-
 import org.apache.spark.sql.SparkSession
 
 object SQLDataSourceExample {
@@ -27,7 +25,7 @@ object SQLDataSourceExample {
   def main(args: Array[String]) {
     val spark = SparkSession
       .builder()
-      .appName("Spark SQL data sources example")
+      .appName("Spark SQL Data Soures Example")
       .config("spark.some.config.option", "some-value")
       .getOrCreate()
 
@@ -35,7 +33,6 @@ object SQLDataSourceExample {
     runBasicParquetExample(spark)
     runParquetSchemaMergingExample(spark)
     runJsonDatasetExample(spark)
-    runJdbcDatasetExample(spark)
 
     spark.stop()
   }
@@ -102,10 +99,10 @@ object SQLDataSourceExample {
     // The final schema consists of all 3 columns in the Parquet files together
     // with the partitioning column appeared in the partition directory paths
     // root
-    //  |-- value: int (nullable = true)
-    //  |-- square: int (nullable = true)
-    //  |-- cube: int (nullable = true)
-    //  |-- key: int (nullable = true)
+    // |-- value: int (nullable = true)
+    // |-- square: int (nullable = true)
+    // |-- cube: int (nullable = true)
+    // |-- key : int (nullable = true)
     // $example off:schema_merging$
   }
 
@@ -148,35 +145,4 @@ object SQLDataSourceExample {
     // $example off:json_dataset$
   }
 
-  private def runJdbcDatasetExample(spark: SparkSession): Unit = {
-    // $example on:jdbc_dataset$
-    // Note: JDBC loading and saving can be achieved via either the load/save or jdbc methods
-    // Loading data from a JDBC source
-    val jdbcDF = spark.read
-      .format("jdbc")
-      .option("url", "jdbc:postgresql:dbserver")
-      .option("dbtable", "schema.tablename")
-      .option("user", "username")
-      .option("password", "password")
-      .load()
-
-    val connectionProperties = new Properties()
-    connectionProperties.put("user", "username")
-    connectionProperties.put("password", "password")
-    val jdbcDF2 = spark.read
-      .jdbc("jdbc:postgresql:dbserver", "schema.tablename", connectionProperties)
-
-    // Saving data to a JDBC source
-    jdbcDF.write
-      .format("jdbc")
-      .option("url", "jdbc:postgresql:dbserver")
-      .option("dbtable", "schema.tablename")
-      .option("user", "username")
-      .option("password", "password")
-      .save()
-
-    jdbcDF2.write
-      .jdbc("jdbc:postgresql:dbserver", "schema.tablename", connectionProperties)
-    // $example off:jdbc_dataset$
-  }
 }

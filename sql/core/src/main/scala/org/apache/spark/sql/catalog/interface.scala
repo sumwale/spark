@@ -19,7 +19,6 @@ package org.apache.spark.sql.catalog
 
 import javax.annotation.Nullable
 
-import org.apache.spark.annotation.InterfaceStability
 import org.apache.spark.sql.catalyst.DefinedByConstructorParams
 
 
@@ -34,7 +33,6 @@ import org.apache.spark.sql.catalyst.DefinedByConstructorParams
  * @param locationUri path (in the form of a uri) to data files.
  * @since 2.0.0
  */
-@InterfaceStability.Stable
 class Database(
     val name: String,
     @Nullable val description: String,
@@ -61,7 +59,6 @@ class Database(
  * @param isTemporary whether the table is a temporary table.
  * @since 2.0.0
  */
-@InterfaceStability.Stable
 class Table(
     val name: String,
     @Nullable val database: String,
@@ -93,7 +90,6 @@ class Table(
  * @param isBucket whether the column is a bucket column.
  * @since 2.0.0
  */
-@InterfaceStability.Stable
 class Column(
     val name: String,
     @Nullable val description: String,
@@ -126,7 +122,6 @@ class Column(
  * @param isTemporary whether the function is a temporary function or not.
  * @since 2.0.0
  */
-@InterfaceStability.Stable
 class Function(
     val name: String,
     @Nullable val database: String,

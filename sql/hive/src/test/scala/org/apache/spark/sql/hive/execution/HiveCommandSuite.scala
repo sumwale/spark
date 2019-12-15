@@ -18,33 +18,21 @@
 package org.apache.spark.sql.hive.execution
 
 import org.apache.spark.sql.{AnalysisException, QueryTest, Row, SaveMode}
-import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException
-import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType}
+import org.apache.spark.sql.execution.command.CreateDataSourceTableUtils._
 import org.apache.spark.sql.hive.test.TestHiveSingleton
-import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.test.SQLTestUtils
-import org.apache.spark.sql.types.StructType
 
 class HiveCommandSuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
   import testImplicits._
 
   protected override def beforeAll(): Unit = {
     super.beforeAll()
-
-    // Use catalog to create table instead of SQL string here, because we don't support specifying
-    // table properties for data source table with SQL API now.
-    hiveContext.sessionState.catalog.createTable(
-      CatalogTable(
-        identifier = TableIdentifier("parquet_tab1"),
-        tableType = CatalogTableType.MANAGED,
-        storage = CatalogStorageFormat.empty,
-        schema = new StructType().add("c1", "int").add("c2", "string"),
-        provider = Some("parquet"),
-        properties = Map("my_key1" -> "v1")
-      ),
-      ignoreIfExists = false
-    )
+    sql(
+      """
+        |CREATE TABLE parquet_tab1 (c1 INT, c2 STRING)
+        |USING org.apache.spark.sql.parquet.DefaultSource
+      """.stripMargin)
 
     sql(
       """
@@ -95,15 +83,15 @@ class HiveCommandSuite extends QueryTest with SQLTestUtils with TestHiveSingleto
       sql("CREATE TABLE show2b(c2 int)")
       checkAnswer(
         sql("SHOW TABLES IN default 'show1*'"),
-        Row("default", "show1a", false) :: Nil)
+        Row("show1a", false) :: Nil)
       checkAnswer(
         sql("SHOW TABLES IN default 'show1*|show2*'"),
-        Row("default", "show1a", false) ::
-          Row("default", "show2b", false) :: Nil)
+        Row("show1a", false) ::
+          Row("show2b", false) :: Nil)
       checkAnswer(
         sql("SHOW TABLES 'show1*|show2*'"),
-        Row("default", "show1a", false) ::
-          Row("default", "show2b", false) :: Nil)
+        Row("show1a", false) ::
+          Row("show2b", false) :: Nil)
       assert(
         sql("SHOW TABLES").count() >= 2)
       assert(
@@ -113,14 +101,23 @@ class HiveCommandSuite extends QueryTest with SQLTestUtils with TestHiveSingleto
 
   test("show tblproperties of data source tables - basic") {
     checkAnswer(
-      sql("SHOW TBLPROPERTIES parquet_tab1").filter(s"key = 'my_key1'"),
-      Row("my_key1", "v1") :: Nil
+      sql("SHOW TBLPROPERTIES parquet_tab1").filter(s"key = '$DATASOURCE_PROVIDER'"),
+      Row(DATASOURCE_PROVIDER, "org.apache.spark.sql.parquet.DefaultSource") :: Nil
     )
 
     checkAnswer(
-      sql(s"SHOW TBLPROPERTIES parquet_tab1('my_key1')"),
-      Row("v1") :: Nil
+      sql(s"SHOW TBLPROPERTIES parquet_tab1($DATASOURCE_PROVIDER)"),
+      Row("org.apache.spark.sql.parquet.DefaultSource") :: Nil
     )
+
+    checkAnswer(
+      sql("SHOW TBLPROPERTIES parquet_tab1").filter(s"key = '$DATASOURCE_SCHEMA_NUMPARTS'"),
+      Row(DATASOURCE_SCHEMA_NUMPARTS, "1") :: Nil
+    )
+
+    checkAnswer(
+      sql(s"SHOW TBLPROPERTIES parquet_tab1('$DATASOURCE_SCHEMA_NUMPARTS')"),
+      Row("1"))
   }
 
   test("show tblproperties for datasource table - errors") {
@@ -337,6 +334,28 @@ class HiveCommandSuite extends QueryTest with SQLTestUtils with TestHiveSingleto
     }
   }
 
+  test("show columns") {
+    checkAnswer(
+      sql("SHOW COLUMNS IN parquet_tab3"),
+      Row("col1") :: Row("col 2") :: Nil)
+
+    checkAnswer(
+      sql("SHOW COLUMNS IN default.parquet_tab3"),
+      Row("col1") :: Row("col 2") :: Nil)
+
+    checkAnswer(
+      sql("SHOW COLUMNS IN parquet_tab3 FROM default"),
+      Row("col1") :: Row("col 2") :: Nil)
+
+    checkAnswer(
+      sql("SHOW COLUMNS IN parquet_tab4 IN default"),
+      Row("price") :: Row("qty") :: Row("year") :: Row("month") :: Nil)
+
+    val message = intercept[NoSuchTableException] {
+      sql("SHOW COLUMNS IN badtable FROM default")
+    }.getMessage
+    assert(message.contains("'badtable' not found in database"))
+  }
 
   test("show partitions - show everything") {
     checkAnswer(
@@ -385,24 +404,25 @@ class HiveCommandSuite extends QueryTest with SQLTestUtils with TestHiveSingleto
           |USING org.apache.spark.sql.parquet.DefaultSource
         """.stripMargin)
       // An empty sequence of row is returned for session temporary table.
-      intercept[NoSuchTableException] {
-        sql("SHOW PARTITIONS parquet_temp")
-      }
-
       val message1 = intercept[AnalysisException] {
-        sql("SHOW PARTITIONS parquet_tab3")
+        sql("SHOW PARTITIONS parquet_temp")
       }.getMessage
-      assert(message1.contains("not allowed on a table that is not partitioned"))
+      assert(message1.contains("is not allowed on a temporary table"))
 
       val message2 = intercept[AnalysisException] {
-        sql("SHOW PARTITIONS parquet_tab4 PARTITION(abcd=2015, xyz=1)")
+        sql("SHOW PARTITIONS parquet_tab3")
       }.getMessage
-      assert(message2.contains("Non-partitioning column(s) [abcd, xyz] are specified"))
+      assert(message2.contains("not allowed on a table that is not partitioned"))
 
       val message3 = intercept[AnalysisException] {
+        sql("SHOW PARTITIONS parquet_tab4 PARTITION(abcd=2015, xyz=1)")
+      }.getMessage
+      assert(message3.contains("Non-partitioning column(s) [abcd, xyz] are specified"))
+
+      val message4 = intercept[AnalysisException] {
         sql("SHOW PARTITIONS parquet_view1")
       }.getMessage
-      assert(message3.contains("is not allowed on a view"))
+      assert(message4.contains("is not allowed on a view or index table"))
     }
   }
 
@@ -415,7 +435,10 @@ class HiveCommandSuite extends QueryTest with SQLTestUtils with TestHiveSingleto
         .mode(SaveMode.Overwrite)
         .saveAsTable("part_datasrc")
 
-      assert(sql("SHOW PARTITIONS part_datasrc").count() == 3)
+      val message1 = intercept[AnalysisException] {
+        sql("SHOW PARTITIONS part_datasrc")
+      }.getMessage
+      assert(message1.contains("is not allowed on a datasource table"))
     }
   }
 }

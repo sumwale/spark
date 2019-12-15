@@ -49,11 +49,11 @@ import org.apache.spark.network.util.NettyUtils;
 public class ProtocolSuite {
   private void testServerToClient(Message msg) {
     EmbeddedChannel serverChannel = new EmbeddedChannel(new FileRegionEncoder(),
-      MessageEncoder.INSTANCE);
+      new MessageEncoder());
     serverChannel.writeOutbound(msg);
 
     EmbeddedChannel clientChannel = new EmbeddedChannel(
-        NettyUtils.createFrameDecoder(), MessageDecoder.INSTANCE);
+        NettyUtils.createFrameDecoder(), new MessageDecoder());
 
     while (!serverChannel.outboundMessages().isEmpty()) {
       clientChannel.writeInbound(serverChannel.readOutbound());
@@ -65,11 +65,11 @@ public class ProtocolSuite {
 
   private void testClientToServer(Message msg) {
     EmbeddedChannel clientChannel = new EmbeddedChannel(new FileRegionEncoder(),
-      MessageEncoder.INSTANCE);
+      new MessageEncoder());
     clientChannel.writeOutbound(msg);
 
     EmbeddedChannel serverChannel = new EmbeddedChannel(
-        NettyUtils.createFrameDecoder(), MessageDecoder.INSTANCE);
+        NettyUtils.createFrameDecoder(), new MessageDecoder());
 
     while (!clientChannel.outboundMessages().isEmpty()) {
       serverChannel.writeInbound(clientChannel.readOutbound());

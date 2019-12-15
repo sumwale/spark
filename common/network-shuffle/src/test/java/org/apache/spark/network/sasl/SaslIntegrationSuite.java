@@ -103,7 +103,7 @@ public class SaslIntegrationSuite {
   }
 
   @Test
-  public void testGoodClient() throws IOException, InterruptedException {
+  public void testGoodClient() throws IOException {
     clientFactory = context.createClientFactory(
       Lists.<TransportClientBootstrap>newArrayList(
         new SaslClientBootstrap(conf, "app-1", secretKeyHolder)));
@@ -133,7 +133,7 @@ public class SaslIntegrationSuite {
   }
 
   @Test
-  public void testNoSaslClient() throws IOException, InterruptedException {
+  public void testNoSaslClient() throws IOException {
     clientFactory = context.createClientFactory(
       Lists.<TransportClientBootstrap>newArrayList());
 

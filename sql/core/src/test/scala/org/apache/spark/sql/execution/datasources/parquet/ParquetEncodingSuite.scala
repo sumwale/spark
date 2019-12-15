@@ -104,7 +104,6 @@ class ParquetEncodingSuite extends ParquetCompatibilityTest with SharedSQLContex
           assert(column.getUTF8String(3 * i + 1).toString == i.toString)
           assert(column.getUTF8String(3 * i + 2).toString == i.toString)
         }
-        reader.close()
       }
     }
   }

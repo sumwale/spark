@@ -20,8 +20,6 @@ package org.apache.spark.sql.types
 import org.json4s.JsonAST.JValue
 import org.json4s.JsonDSL._
 
-import org.apache.spark.annotation.InterfaceStability
-
 /**
  * A field inside a StructType.
  * @param name The name of this field.
@@ -29,10 +27,7 @@ import org.apache.spark.annotation.InterfaceStability
  * @param nullable Indicates if values of this field can be `null` values.
  * @param metadata The metadata of this field. The metadata should be preserved during
  *                 transformation if the content of the column is not modified, e.g, in selection.
- *
- * @since 1.3.0
  */
-@InterfaceStability.Stable
 case class StructField(
     name: String,
     dataType: DataType,

@@ -16,7 +16,7 @@
  */
 package org.apache.spark.status.api.v1
 
-import java.util.{Date, List => JList}
+import java.util.{Arrays, Date, List => JList}
 import javax.ws.rs.{DefaultValue, GET, Produces, QueryParam}
 import javax.ws.rs.core.MediaType
 
@@ -29,24 +29,30 @@ private[v1] class ApplicationListResource(uiRoot: UIRoot) {
   def appList(
       @QueryParam("status") status: JList[ApplicationStatus],
       @DefaultValue("2010-01-01") @QueryParam("minDate") minDate: SimpleDateParam,
-      @DefaultValue("3000-01-01") @QueryParam("maxDate") maxDate: SimpleDateParam,
-      @QueryParam("limit") limit: Integer)
+      @DefaultValue("3000-01-01") @QueryParam("maxDate") maxDate: SimpleDateParam)
   : Iterator[ApplicationInfo] = {
-
-    val numApps = Option(limit).map(_.toInt).getOrElse(Integer.MAX_VALUE)
-    val includeCompleted = status.isEmpty || status.contains(ApplicationStatus.COMPLETED)
-    val includeRunning = status.isEmpty || status.contains(ApplicationStatus.RUNNING)
-
-    uiRoot.getApplicationInfoList.filter { app =>
-      val anyRunning = app.attempts.exists(!_.completed)
-      // if any attempt is still running, we consider the app to also still be running;
-      // keep the app if *any* attempts fall in the right time window
-      ((!anyRunning && includeCompleted) || (anyRunning && includeRunning)) &&
-      app.attempts.exists { attempt =>
-        val start = attempt.startTime.getTime
-        start >= minDate.timestamp && start <= maxDate.timestamp
+    val allApps = uiRoot.getApplicationInfoList
+    val adjStatus = {
+      if (status.isEmpty) {
+        Arrays.asList(ApplicationStatus.values(): _*)
+      } else {
+        status
       }
-    }.take(numApps)
+    }
+    val includeCompleted = adjStatus.contains(ApplicationStatus.COMPLETED)
+    val includeRunning = adjStatus.contains(ApplicationStatus.RUNNING)
+    allApps.filter { app =>
+      val anyRunning = app.attempts.exists(!_.completed)
+      // if any attempt is still running, we consider the app to also still be running
+      val statusOk = (!anyRunning && includeCompleted) ||
+        (anyRunning && includeRunning)
+      // keep the app if *any* attempts fall in the right time window
+      val dateOk = app.attempts.exists { attempt =>
+        attempt.startTime.getTime >= minDate.timestamp &&
+          attempt.startTime.getTime <= maxDate.timestamp
+      }
+      statusOk && dateOk
+    }
   }
 }
 

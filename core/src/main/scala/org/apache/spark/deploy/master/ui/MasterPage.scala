@@ -26,11 +26,10 @@ import org.json4s.JValue
 import org.apache.spark.deploy.DeployMessages.{KillDriverResponse, MasterStateResponse, RequestKillDriver, RequestMasterState}
 import org.apache.spark.deploy.JsonProtocol
 import org.apache.spark.deploy.master._
-import org.apache.spark.internal.Logging
 import org.apache.spark.ui.{UIUtils, WebUIPage}
 import org.apache.spark.util.Utils
 
-private[ui] class MasterPage(parent: MasterWebUI) extends WebUIPage("") with Logging {
+private[ui] class MasterPage(parent: MasterWebUI) extends WebUIPage("") {
   private val master = parent.masterEndpointRef
 
   def getMasterState: MasterStateResponse = {
@@ -49,33 +48,19 @@ private[ui] class MasterPage(parent: MasterWebUI) extends WebUIPage("") with Log
     })
   }
 
-  def handleAppKillByNameRequest(request: HttpServletRequest): Unit = {
-    handleKillRequest(request, name => {
-      parent.master.nameToApp.get(name.toLowerCase).foreach { app =>
-        parent.master.removeApplication(app, ApplicationState.KILLED)
-      }
-    }, killByName = true)
-  }
-
   def handleDriverKillRequest(request: HttpServletRequest): Unit = {
     handleKillRequest(request, id => {
       master.ask[KillDriverResponse](RequestKillDriver(id))
     })
   }
 
-  private def handleKillRequest(request: HttpServletRequest,
-      action: String => Unit,
-      killByName: Boolean = false): Unit = {
+  private def handleKillRequest(request: HttpServletRequest, action: String => Unit): Unit = {
     if (parent.killEnabled &&
         parent.master.securityMgr.checkModifyPermissions(request.getRemoteUser)) {
       val killFlag = Option(request.getParameter("terminate")).getOrElse("false").toBoolean
-      val idOrName = if (!killByName) {
-        Option(request.getParameter("id"))
-      } else {
-        Option(request.getParameter("name"))
-      }
-      if (idOrName.isDefined && killFlag) {
-        action(idOrName.get)
+      val id = Option(request.getParameter("id"))
+      if (id.isDefined && killFlag) {
+        action(id.get)
       }
 
       Thread.sleep(100)
@@ -191,8 +176,7 @@ private[ui] class MasterPage(parent: MasterWebUI) extends WebUIPage("") with Log
   private def workerRow(worker: WorkerInfo): Seq[Node] = {
     <tr>
       <td>
-          <a href={UIUtils.makeHref(parent.master.reverseProxy,
-            worker.id, worker.webUiAddress)}>{worker.id}</a>
+        <a href={worker.webUiAddress}>{worker.id}</a>
       </td>
       <td>{worker.host}:{worker.port}</td>
       <td>{worker.state}</td>
@@ -226,8 +210,7 @@ private[ui] class MasterPage(parent: MasterWebUI) extends WebUIPage("") with Log
           if (app.isFinished) {
             app.desc.name
           } else {
-            <a href={UIUtils.makeHref(parent.master.reverseProxy,
-              app.id, app.desc.appUiUrl)}>{app.desc.name}</a>
+            <a href={app.desc.appUiUrl}>{app.desc.name}</a>
           }
         }
       </td>
@@ -261,11 +244,7 @@ private[ui] class MasterPage(parent: MasterWebUI) extends WebUIPage("") with Log
     <tr>
       <td>{driver.id} {killLink}</td>
       <td>{driver.submitDate}</td>
-      <td>{driver.worker.map(w =>
-        <a href=
-          {UIUtils.makeHref(parent.master.reverseProxy, w.id, w.webUiAddress)}>
-          {w.id.toString}</a>
-        ).getOrElse("None")}
+      <td>{driver.worker.map(w => <a href={w.webUiAddress}>{w.id.toString}</a>).getOrElse("None")}
       </td>
       <td>{driver.state}</td>
       <td sorttable_customkey={driver.desc.cores.toString}>

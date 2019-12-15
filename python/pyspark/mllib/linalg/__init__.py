@@ -74,10 +74,7 @@ def _convert_to_vector(l):
         return DenseVector(l)
     elif _have_scipy and scipy.sparse.issparse(l):
         assert l.shape[1] == 1, "Expected column vector"
-        # Make sure the converted csc_matrix has sorted indices.
         csc = l.tocsc()
-        if not csc.has_sorted_indices:
-            csc.sort_indices()
         return SparseVector(l.shape[0], csc.indices, csc.data)
     else:
         raise TypeError("Cannot convert type %s into Vector" % type(l))
@@ -805,7 +802,7 @@ class SparseVector(Vector):
                 "Indices must be of type integer, got type %s" % type(index))
 
         if index >= self.size or index < -self.size:
-            raise IndexError("Index %d out of bounds." % index)
+            raise ValueError("Index %d out of bounds." % index)
         if index < 0:
             index += self.size
 
@@ -838,12 +835,11 @@ class SparseVector(Vector):
 class Vectors(object):
 
     """
-    Factory methods for working with vectors.
-
-    .. note:: Dense vectors are simply represented as NumPy array objects,
-        so there is no need to covert them for use in MLlib. For sparse vectors,
-        the factory methods in this class create an MLlib-compatible type, or users
-        can pass in SciPy's C{scipy.sparse} column vectors.
+    Factory methods for working with vectors. Note that dense vectors
+    are simply represented as NumPy array objects, so there is no need
+    to covert them for use in MLlib. For sparse vectors, the factory
+    methods in this class create an MLlib-compatible type, or users
+    can pass in SciPy's C{scipy.sparse} column vectors.
     """
 
     @staticmethod
@@ -1119,10 +1115,10 @@ class DenseMatrix(Matrix):
     def __getitem__(self, indices):
         i, j = indices
         if i < 0 or i >= self.numRows:
-            raise IndexError("Row index %d is out of range [0, %d)"
+            raise ValueError("Row index %d is out of range [0, %d)"
                              % (i, self.numRows))
         if j >= self.numCols or j < 0:
-            raise IndexError("Column index %d is out of range [0, %d)"
+            raise ValueError("Column index %d is out of range [0, %d)"
                              % (j, self.numCols))
 
         if self.isTransposed:
@@ -1249,10 +1245,10 @@ class SparseMatrix(Matrix):
     def __getitem__(self, indices):
         i, j = indices
         if i < 0 or i >= self.numRows:
-            raise IndexError("Row index %d is out of range [0, %d)"
+            raise ValueError("Row index %d is out of range [0, %d)"
                              % (i, self.numRows))
         if j < 0 or j >= self.numCols:
-            raise IndexError("Column index %d is out of range [0, %d)"
+            raise ValueError("Column index %d is out of range [0, %d)"
                              % (j, self.numCols))
 
         # If a CSR matrix is given, then the row index should be searched

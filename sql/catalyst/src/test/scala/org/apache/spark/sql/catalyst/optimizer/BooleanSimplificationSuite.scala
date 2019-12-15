@@ -30,7 +30,6 @@ import org.apache.spark.sql.catalyst.rules._
 class BooleanSimplificationSuite extends PlanTest with PredicateHelper {
 
   object Optimize extends RuleExecutor[LogicalPlan] {
-    val conf = SimpleCatalystConf(caseSensitiveAnalysis = true)
     val batches =
       Batch("AnalysisNodes", Once,
         EliminateSubqueryAliases) ::
@@ -38,7 +37,7 @@ class BooleanSimplificationSuite extends PlanTest with PredicateHelper {
         NullPropagation,
         ConstantFolding,
         BooleanSimplification,
-        PruneFilters(conf)) :: Nil
+        PruneFilters) :: Nil
   }
 
   val testRelation = LocalRelation('a.int, 'b.int, 'c.int, 'd.string)

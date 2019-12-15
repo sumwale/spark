@@ -19,13 +19,14 @@ package org.apache.spark.sql.types
 
 import scala.reflect.runtime.universe.typeTag
 
-import org.apache.spark.annotation.InterfaceStability
+import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.sql.AnalysisException
 import org.apache.spark.sql.catalyst.ScalaReflectionLock
 import org.apache.spark.sql.catalyst.expressions.Expression
 
 
 /**
+ * :: DeveloperApi ::
  * The data type representing `java.math.BigDecimal` values.
  * A Decimal that must have fixed precision (the maximum number of digits) and scale (the number
  * of digits on right side of dot).
@@ -34,11 +35,9 @@ import org.apache.spark.sql.catalyst.expressions.Expression
  *
  * The default precision and scale is (10, 0).
  *
- * Please use `DataTypes.createDecimalType()` to create a specific instance.
- *
- * @since 1.3.0
+ * Please use [[DataTypes.createDecimalType()]] to create a specific instance.
  */
-@InterfaceStability.Stable
+@DeveloperApi
 case class DecimalType(precision: Int, scale: Int) extends FractionalType {
 
   if (scale > precision) {
@@ -92,8 +91,7 @@ case class DecimalType(precision: Int, scale: Int) extends FractionalType {
   }
 
   /**
-   * The default size of a value of the DecimalType is 8 bytes when precision is at most 18,
-   * and 16 bytes otherwise.
+   * The default size of a value of the DecimalType is 8 bytes (precision <= 18) or 16 bytes.
    */
   override def defaultSize: Int = if (precision <= Decimal.MAX_LONG_DIGITS) 8 else 16
 
@@ -103,12 +101,7 @@ case class DecimalType(precision: Int, scale: Int) extends FractionalType {
 }
 
 
-/**
- * Extra factory methods and pattern matchers for Decimals.
- *
- * @since 1.3.0
- */
-@InterfaceStability.Stable
+/** Extra factory methods and pattern matchers for Decimals */
 object DecimalType extends AbstractDataType {
   import scala.math.min
 

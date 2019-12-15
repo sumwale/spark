@@ -17,10 +17,13 @@
 
 package org.apache.spark.sql.types
 
-import scala.reflect.runtime.universe.TypeTag
+import scala.reflect.ClassTag
+import scala.reflect.runtime.universe.{runtimeMirror, TypeTag}
 
-import org.apache.spark.annotation.InterfaceStability
+import org.apache.spark.annotation.DeveloperApi
+import org.apache.spark.sql.catalyst.ScalaReflectionLock
 import org.apache.spark.sql.catalyst.expressions.Expression
+import org.apache.spark.util.Utils
 
 /**
  * A non-concrete data type, reserved for internal uses.
@@ -127,15 +130,19 @@ protected[sql] abstract class AtomicType extends DataType {
   private[sql] type InternalType
   private[sql] val tag: TypeTag[InternalType]
   private[sql] val ordering: Ordering[InternalType]
+
+  @transient private[sql] val classTag = ScalaReflectionLock.synchronized {
+    val mirror = runtimeMirror(Utils.getSparkClassLoader)
+    ClassTag[InternalType](mirror.runtimeClass(tag.tpe))
+  }
 }
 
 
 /**
+ * :: DeveloperApi ::
  * Numeric data types.
- *
- * @since 1.3.0
  */
-@InterfaceStability.Stable
+@DeveloperApi
 abstract class NumericType extends AtomicType {
   // Unfortunately we can't get this implicitly as that breaks Spark Serialization. In order for
   // implicitly[Numeric[JvmType]] to be valid, we have to change JvmType from a type variable to a

@@ -73,9 +73,8 @@ class RegressionMetrics @Since("2.0.0") (
 
   /**
    * Returns the variance explained by regression.
-   * explainedVariance = $\sum_i (\hat{y_i} - \bar{y})^2^ / n$
-   * @see <a href="https://en.wikipedia.org/wiki/Fraction_of_variance_unexplained">
-   * Fraction of variance unexplained (Wikipedia)</a>
+   * explainedVariance = \sum_i (\hat{y_i} - \bar{y})^2 / n
+   * @see [[https://en.wikipedia.org/wiki/Fraction_of_variance_unexplained]]
    */
   @Since("1.2.0")
   def explainedVariance: Double = {
@@ -111,11 +110,10 @@ class RegressionMetrics @Since("2.0.0") (
 
   /**
    * Returns R^2^, the unadjusted coefficient of determination.
-   * @see <a href="http://en.wikipedia.org/wiki/Coefficient_of_determination">
-   * Coefficient of determination (Wikipedia)</a>
+   * @see [[http://en.wikipedia.org/wiki/Coefficient_of_determination]]
    * In case of regression through the origin, the definition of R^2^ is to be modified.
-   * @see <a href="https://online.stat.psu.edu/~ajw13/stat501/SpecialTopics/Reg_thru_origin.pdf">
-   * J. G. Eisenhauer, Regression through the Origin. Teaching Statistics 25, 76-80 (2003)</a>
+   * @see J. G. Eisenhauer, Regression through the Origin. Teaching Statistics 25, 76-80 (2003)
+   * [[https://online.stat.psu.edu/~ajw13/stat501/SpecialTopics/Reg_thru_origin.pdf]]
    */
   @Since("1.2.0")
   def r2: Double = {

@@ -57,6 +57,4 @@ case class ReferenceSort(
   override def output: Seq[Attribute] = child.output
 
   override def outputOrdering: Seq[SortOrder] = sortOrder
-
-  override def outputPartitioning: Partitioning = child.outputPartitioning
 }

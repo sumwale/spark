@@ -33,20 +33,13 @@ import org.slf4j.LoggerFactory;
 @ChannelHandler.Sharable
 public final class MessageDecoder extends MessageToMessageDecoder<ByteBuf> {
 
-  private static final Logger logger = LoggerFactory.getLogger(MessageDecoder.class);
-
-  public static final MessageDecoder INSTANCE = new MessageDecoder();
-
-  private MessageDecoder() {}
-
+  private final Logger logger = LoggerFactory.getLogger(MessageDecoder.class);
   @Override
   public void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
     Message.Type msgType = Message.Type.decode(in);
     Message decoded = decode(msgType, in);
     assert decoded.type() == msgType;
-    if (logger.isTraceEnabled()) {
-      logger.trace("Received message {}: {}", msgType, decoded);
-    }
+    logger.trace("Received message " + msgType + ": " + decoded);
     out.add(decoded);
   }
 

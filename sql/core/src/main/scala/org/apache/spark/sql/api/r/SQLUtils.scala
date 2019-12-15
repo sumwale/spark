@@ -28,15 +28,15 @@ import org.apache.spark.SparkContext
 import org.apache.spark.api.java.{JavaRDD, JavaSparkContext}
 import org.apache.spark.api.r.SerDe
 import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.internal.config.CATALOG_IMPLEMENTATION
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.execution.command.ShowTablesCommand
-import org.apache.spark.sql.internal.StaticSQLConf.CATALOG_IMPLEMENTATION
 import org.apache.spark.sql.types._
 
 private[sql] object SQLUtils extends Logging {
-  SerDe.setSQLReadObject(readSqlObject).setSQLWriteObject(writeSqlObject)
+  SerDe.registerSqlSerDe((readSqlObject, writeSqlObject))
 
   private[this] def withHiveExternalCatalog(sc: SparkContext): SparkContext = {
     sc.conf.set(CATALOG_IMPLEMENTATION.key, "hive")
@@ -47,14 +47,12 @@ private[sql] object SQLUtils extends Logging {
       jsc: JavaSparkContext,
       sparkConfigMap: JMap[Object, Object],
       enableHiveSupport: Boolean): SparkSession = {
-    val spark = if (SparkSession.hiveClassesArePresent && enableHiveSupport
-        && jsc.sc.conf.get(CATALOG_IMPLEMENTATION.key, "hive").toLowerCase == "hive") {
+    val spark = if (SparkSession.hiveClassesArePresent && enableHiveSupport) {
       SparkSession.builder().sparkContext(withHiveExternalCatalog(jsc.sc)).getOrCreate()
     } else {
       if (enableHiveSupport) {
         logWarning("SparkR: enableHiveSupport is requested for SparkSession but " +
-          s"Spark is not built with Hive or ${CATALOG_IMPLEMENTATION.key} is not set to 'hive', " +
-          "falling back to without Hive support.")
+          "Spark is not built with Hive; falling back to without Hive support.")
       }
       SparkSession.builder().sparkContext(jsc.sc).getOrCreate()
     }
@@ -66,7 +64,7 @@ private[sql] object SQLUtils extends Logging {
       spark: SparkSession,
       sparkConfigMap: JMap[Object, Object]): Unit = {
     for ((name, value) <- sparkConfigMap.asScala) {
-      spark.sessionState.conf.setConfString(name.toString, value.toString)
+      spark.conf.set(name.toString, value.toString)
     }
     for ((name, value) <- sparkConfigMap.asScala) {
       spark.sparkContext.conf.set(name.toString, value.toString)
@@ -160,7 +158,7 @@ private[sql] object SQLUtils extends Logging {
     val dis = new DataInputStream(bis)
     val num = SerDe.readInt(dis)
     Row.fromSeq((0 until num).map { i =>
-      doConversion(SerDe.readObject(dis, jvmObjectTracker = null), schema.fields(i).dataType)
+      doConversion(SerDe.readObject(dis), schema.fields(i).dataType)
     })
   }
 
@@ -169,7 +167,7 @@ private[sql] object SQLUtils extends Logging {
     val dos = new DataOutputStream(bos)
 
     val cols = (0 until row.length).map(row(_).asInstanceOf[Object]).toArray
-    SerDe.writeObject(dos, cols, jvmObjectTracker = null)
+    SerDe.writeObject(dos, cols)
     bos.toByteArray()
   }
 
@@ -249,7 +247,7 @@ private[sql] object SQLUtils extends Logging {
     dataType match {
       case 's' =>
         // Read StructType for DataFrame
-        val fields = SerDe.readList(dis, jvmObjectTracker = null).asInstanceOf[Array[Object]]
+        val fields = SerDe.readList(dis).asInstanceOf[Array[Object]]
         Row.fromSeq(fields)
       case _ => null
     }
@@ -260,8 +258,8 @@ private[sql] object SQLUtils extends Logging {
       // Handle struct type in DataFrame
       case v: GenericRowWithSchema =>
         dos.writeByte('s')
-        SerDe.writeObject(dos, v.schema.fieldNames, jvmObjectTracker = null)
-        SerDe.writeObject(dos, v.values, jvmObjectTracker = null)
+        SerDe.writeObject(dos, v.schema.fieldNames)
+        SerDe.writeObject(dos, v.values)
         true
       case _ =>
         false
@@ -278,12 +276,11 @@ private[sql] object SQLUtils extends Logging {
   }
 
   def getTableNames(sparkSession: SparkSession, databaseName: String): Array[String] = {
-    val db = databaseName match {
-      case _ if databaseName != null && databaseName.trim.nonEmpty =>
-        databaseName
+    databaseName match {
+      case n: String if n != null && n.trim.nonEmpty =>
+        sparkSession.catalog.listTables(n).collect().map(_.name)
       case _ =>
-        sparkSession.catalog.currentDatabase
+        sparkSession.catalog.listTables().collect().map(_.name)
     }
-    sparkSession.sessionState.catalog.listTables(db).map(_.table).toArray
   }
 }

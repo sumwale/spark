@@ -84,7 +84,6 @@ import org.apache.spark.sql.DataFrame
  * input dataset, while MLlib's feature transformers operate lazily on individual columns,
  * which is more efficient and flexible to handle large and complex datasets.
  *
- * @see <a href="http://scikit-learn.org/stable/modules/preprocessing.html">
- * scikit-learn.preprocessing</a>
+ * @see [[http://scikit-learn.org/stable/modules/preprocessing.html scikit-learn.preprocessing]]
  */
 package object feature

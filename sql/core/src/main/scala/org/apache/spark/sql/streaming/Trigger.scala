@@ -23,7 +23,7 @@ import scala.concurrent.duration.Duration
 
 import org.apache.commons.lang3.StringUtils
 
-import org.apache.spark.annotation.{Experimental, InterfaceStability}
+import org.apache.spark.annotation.Experimental
 import org.apache.spark.unsafe.types.CalendarInterval
 
 /**
@@ -33,7 +33,6 @@ import org.apache.spark.unsafe.types.CalendarInterval
  * @since 2.0.0
  */
 @Experimental
-@InterfaceStability.Evolving
 sealed trait Trigger
 
 /**
@@ -60,7 +59,6 @@ sealed trait Trigger
  * @since 2.0.0
  */
 @Experimental
-@InterfaceStability.Evolving
 case class ProcessingTime(intervalMs: Long) extends Trigger {
   require(intervalMs >= 0, "the interval of trigger should not be negative")
 }
@@ -72,7 +70,6 @@ case class ProcessingTime(intervalMs: Long) extends Trigger {
  * @since 2.0.0
  */
 @Experimental
-@InterfaceStability.Evolving
 object ProcessingTime {
 
   /**

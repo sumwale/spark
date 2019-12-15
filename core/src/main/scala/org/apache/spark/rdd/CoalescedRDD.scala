@@ -80,10 +80,6 @@ private[spark] class CoalescedRDD[T: ClassTag](
 
   require(maxPartitions > 0 || maxPartitions == prev.partitions.length,
     s"Number of partitions ($maxPartitions) must be positive.")
-  if (partitionCoalescer.isDefined) {
-    require(partitionCoalescer.get.isInstanceOf[Serializable],
-      "The partition coalescer passed in must be serializable.")
-  }
 
   override def getPartitions: Array[Partition] = {
     val pc = partitionCoalescer.getOrElse(new DefaultPartitionCoalescer())
@@ -187,14 +183,14 @@ private class DefaultPartitionCoalescer(val balanceSlack: Double = 0.10)
 
     getAllPrefLocs(prev)
 
-    // gets all the preferred locations of the previous RDD and splits them into partitions
+    // gets all the preffered locations of the previous RDD and splits them into partitions
     // with preferred locations and ones without
-    def getAllPrefLocs(prev: RDD[_]): Unit = {
+    def getAllPrefLocs(prev: RDD[_]) {
       val tmpPartsWithLocs = mutable.LinkedHashMap[Partition, Seq[String]]()
       // first get the locations for each partition, only do this once since it can be expensive
       prev.partitions.foreach(p => {
           val locs = currPrefLocs(p, prev)
-          if (locs.nonEmpty) {
+          if (locs.size > 0) {
             tmpPartsWithLocs.put(p, locs)
           } else {
             partsWithoutLocs += p
@@ -202,13 +198,13 @@ private class DefaultPartitionCoalescer(val balanceSlack: Double = 0.10)
         }
       )
       // convert it into an array of host to partition
-      for (x <- 0 to 2) {
-        tmpPartsWithLocs.foreach { parts =>
+      (0 to 2).map(x =>
+        tmpPartsWithLocs.foreach(parts => {
           val p = parts._1
           val locs = parts._2
           if (locs.size > x) partsWithLocs += ((locs(x), p))
-        }
-      }
+        } )
+      )
     }
   }
 

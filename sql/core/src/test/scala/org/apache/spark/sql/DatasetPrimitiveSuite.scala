@@ -17,6 +17,8 @@
 
 package org.apache.spark.sql
 
+import scala.language.postfixOps
+
 import org.apache.spark.sql.test.SharedSQLContext
 
 case class IntClass(value: Int)

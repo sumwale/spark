@@ -50,20 +50,12 @@ class BlockManagerMaster(
     logInfo("Removal of executor " + execId + " requested")
   }
 
-  /**
-   * Register the BlockManager's id with the driver. The input BlockManagerId does not contain
-   * topology information. This information is obtained from the master and we respond with an
-   * updated BlockManagerId fleshed out with this information.
-   */
+  /** Register the BlockManager's id with the driver. */
   def registerBlockManager(
-      blockManagerId: BlockManagerId,
-      maxMemSize: Long,
-      slaveEndpoint: RpcEndpointRef): BlockManagerId = {
+      blockManagerId: BlockManagerId, maxMemSize: Long, slaveEndpoint: RpcEndpointRef): Unit = {
     logInfo(s"Registering BlockManager $blockManagerId")
-    val updatedId = driverEndpoint.askWithRetry[BlockManagerId](
-      RegisterBlockManager(blockManagerId, maxMemSize, slaveEndpoint))
-    logInfo(s"Registered BlockManager $updatedId")
-    updatedId
+    tell(RegisterBlockManager(blockManagerId, maxMemSize, slaveEndpoint))
+    logInfo(s"Registered BlockManager $blockManagerId")
   }
 
   def updateBlockInfo(

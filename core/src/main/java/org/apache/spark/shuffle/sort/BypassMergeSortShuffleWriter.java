@@ -73,7 +73,7 @@ import org.apache.spark.util.Utils;
  */
 final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
 
-  private static final Logger logger = LoggerFactory.getLogger(BypassMergeSortShuffleWriter.class);
+  private final Logger logger = LoggerFactory.getLogger(BypassMergeSortShuffleWriter.class);
 
   private final int fileBufferSize;
   private final boolean transferToEnabled;
@@ -160,14 +160,8 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
 
     File output = shuffleBlockResolver.getDataFile(shuffleId, mapId);
     File tmp = Utils.tempFileWith(output);
-    try {
-      partitionLengths = writePartitionedFile(tmp);
-      shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, tmp);
-    } finally {
-      if (tmp.exists() && !tmp.delete()) {
-        logger.error("Error while deleting temp file {}", tmp.getAbsolutePath());
-      }
-    }
+    partitionLengths = writePartitionedFile(tmp);
+    shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, tmp);
     mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths);
   }
 
@@ -244,6 +238,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
             partitionWriters = null;
           }
         }
+        shuffleBlockResolver.removeDataByMap(shuffleId, mapId);
         return None$.empty();
       }
     }

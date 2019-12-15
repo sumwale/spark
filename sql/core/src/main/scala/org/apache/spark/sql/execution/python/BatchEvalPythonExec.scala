@@ -17,21 +17,18 @@
 
 package org.apache.spark.sql.execution.python
 
-import java.io.File
-
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 
 import net.razorvine.pickle.{Pickler, Unpickler}
 
-import org.apache.spark.{SparkEnv, TaskContext}
+import org.apache.spark.TaskContext
 import org.apache.spark.api.python.{ChainedPythonFunctions, PythonRunner}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.execution.SparkPlan
 import org.apache.spark.sql.types.{DataType, StructField, StructType}
-import org.apache.spark.util.Utils
 
 
 /**
@@ -40,25 +37,9 @@ import org.apache.spark.util.Utils
  * Python evaluation works by sending the necessary (projected) input data via a socket to an
  * external Python process, and combine the result from the Python process with the original row.
  *
- * For each row we send to Python, we also put it in a queue first. For each output row from Python,
+ * For each row we send to Python, we also put it in a queue. For each output row from Python,
  * we drain the queue to find the original input row. Note that if the Python process is way too
- * slow, this could lead to the queue growing unbounded and spill into disk when run out of memory.
- *
- * Here is a diagram to show how this works:
- *
- *            Downstream (for parent)
- *             /      \
- *            /     socket  (output of UDF)
- *           /         \
- *        RowQueue    Python
- *           \         /
- *            \     socket  (input of UDF)
- *             \     /
- *          upstream (from child)
- *
- * The rows sent to and received from Python are packed into batches (100 rows) and serialized,
- * there should be always some rows buffered in the socket or Python process, so the pulling from
- * RowQueue ALWAYS happened after pushing into it.
+ * slow, this could lead to the queue growing unbounded and eventually run out of memory.
  */
 case class BatchEvalPythonExec(udfs: Seq[PythonUDF], output: Seq[Attribute], child: SparkPlan)
   extends SparkPlan {
@@ -89,11 +70,7 @@ case class BatchEvalPythonExec(udfs: Seq[PythonUDF], output: Seq[Attribute], chi
 
       // The queue used to buffer input rows so we can drain it to
       // combine input with output from Python.
-      val queue = HybridRowQueue(TaskContext.get().taskMemoryManager(),
-        new File(Utils.getLocalDir(SparkEnv.get.conf)), child.output.length)
-      TaskContext.get().addTaskCompletionListener({ ctx =>
-        queue.close()
-      })
+      val queue = new java.util.concurrent.ConcurrentLinkedQueue[InternalRow]()
 
       val (pyFuncs, inputs) = udfs.map(collectFunctions).unzip
 
@@ -119,23 +96,26 @@ case class BatchEvalPythonExec(udfs: Seq[PythonUDF], output: Seq[Attribute], chi
       val pickle = new Pickler(needConversion)
       // Input iterator to Python: input rows are grouped so we send them in batches to Python.
       // For each row, add it to the queue.
-      val inputIterator = iter.map { inputRow =>
-        queue.add(inputRow.asInstanceOf[UnsafeRow])
-        val row = projection(inputRow)
-        if (needConversion) {
-          EvaluatePython.toJava(row, schema)
-        } else {
-          // fast path for these types that does not need conversion in Python
-          val fields = new Array[Any](row.numFields)
-          var i = 0
-          while (i < row.numFields) {
-            val dt = dataTypes(i)
-            fields(i) = EvaluatePython.toJava(row.get(i, dt), dt)
-            i += 1
+      val inputIterator = iter.grouped(100).map { inputRows =>
+        val toBePickled = inputRows.map { inputRow =>
+          queue.add(inputRow)
+          val row = projection(inputRow)
+          if (needConversion) {
+            EvaluatePython.toJava(row, schema)
+          } else {
+            // fast path for these types that does not need conversion in Python
+            val fields = new Array[Any](row.numFields)
+            var i = 0
+            while (i < row.numFields) {
+              val dt = dataTypes(i)
+              fields(i) = EvaluatePython.toJava(row.get(i, dt), dt)
+              i += 1
+            }
+            fields
           }
-          fields
-        }
-      }.grouped(100).map(x => pickle.dumps(x.toArray))
+        }.toArray
+        pickle.dumps(toBePickled)
+      }
 
       val context = TaskContext.get()
 
@@ -144,7 +124,7 @@ case class BatchEvalPythonExec(udfs: Seq[PythonUDF], output: Seq[Attribute], chi
         .compute(inputIterator, context.partitionId(), context)
 
       val unpickle = new Unpickler
-      val mutableRow = new GenericInternalRow(1)
+      val mutableRow = new GenericMutableRow(1)
       val joined = new JoinedRow
       val resultType = if (udfs.length == 1) {
         udfs.head.dataType
@@ -152,6 +132,7 @@ case class BatchEvalPythonExec(udfs: Seq[PythonUDF], output: Seq[Attribute], chi
         StructType(udfs.map(u => StructField("", u.dataType, u.nullable)))
       }
       val resultProj = UnsafeProjection.create(output, output)
+
       outputIterator.flatMap { pickedResult =>
         val unpickledBatch = unpickle.loads(pickedResult)
         unpickledBatch.asInstanceOf[java.util.ArrayList[Any]].asScala
@@ -163,7 +144,7 @@ case class BatchEvalPythonExec(udfs: Seq[PythonUDF], output: Seq[Attribute], chi
         } else {
           EvaluatePython.fromJava(result, resultType).asInstanceOf[InternalRow]
         }
-        resultProj(joined(queue.remove(), row))
+        resultProj(joined(queue.poll(), row))
       }
     }
   }

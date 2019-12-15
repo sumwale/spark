@@ -35,7 +35,9 @@ import org.apache.spark.sql.types._
  * A logical command that is executed for its side-effects.  `RunnableCommand`s are
  * wrapped in `ExecutedCommand` during execution.
  */
-trait RunnableCommand extends logical.Command {
+private[sql] trait RunnableCommand extends LogicalPlan with logical.Command {
+  override def output: Seq[Attribute] = Seq.empty
+  override def children: Seq[LogicalPlan] = Seq.empty
   def run(sparkSession: SparkSession): Seq[Row]
 }
 
@@ -43,7 +45,7 @@ trait RunnableCommand extends logical.Command {
  * A physical operator that executes the run method of a `RunnableCommand` and
  * saves the result to prevent multiple executions.
  */
-case class ExecutedCommandExec(cmd: RunnableCommand) extends SparkPlan {
+private[sql] case class ExecutedCommandExec(cmd: RunnableCommand) extends SparkPlan {
   /**
    * A concrete command should override this lazy field to wrap up any side effects caused by the
    * command or any other computation that should be evaluated exactly once. The value of this field
@@ -66,8 +68,6 @@ case class ExecutedCommandExec(cmd: RunnableCommand) extends SparkPlan {
 
   override def executeCollect(): Array[InternalRow] = sideEffectResult.toArray
 
-  override def executeToIterator: Iterator[InternalRow] = sideEffectResult.toIterator
-
   override def executeTake(limit: Int): Array[InternalRow] = sideEffectResult.take(limit).toArray
 
   protected override def doExecute(): RDD[InternalRow] = {
@@ -86,17 +86,17 @@ case class ExecutedCommandExec(cmd: RunnableCommand) extends SparkPlan {
  * }}}
  *
  * @param logicalPlan plan to explain
+ * @param output output schema
  * @param extended whether to do extended explain or not
  * @param codegen whether to output generated code from whole-stage codegen or not
  */
 case class ExplainCommand(
     logicalPlan: LogicalPlan,
+    override val output: Seq[Attribute] =
+      Seq(AttributeReference("plan", StringType, nullable = true)()),
     extended: Boolean = false,
     codegen: Boolean = false)
   extends RunnableCommand {
-
-  override val output: Seq[Attribute] =
-    Seq(AttributeReference("plan", StringType, nullable = true)())
 
   // Run through the optimizer to generate the physical plan.
   override def run(sparkSession: SparkSession): Seq[Row] = try {
@@ -104,7 +104,7 @@ case class ExplainCommand(
       if (logicalPlan.isStreaming) {
         // This is used only by explaining `Dataset/DataFrame` created by `spark.readStream`, so the
         // output mode does not matter since there is no `Sink`.
-        new IncrementalExecution(sparkSession, logicalPlan, OutputMode.Append(), "<unknown>", 0, 0)
+        new IncrementalExecution(sparkSession, logicalPlan, OutputMode.Append(), "<unknown>", 0)
       } else {
         sparkSession.sessionState.executePlan(logicalPlan)
       }
@@ -112,28 +112,6 @@ case class ExplainCommand(
       if (codegen) {
         codegenString(queryExecution.executedPlan)
       } else if (extended) {
-        queryExecution.toString
-      } else {
-        queryExecution.simpleString
-      }
-    Seq(Row(outputString))
-  } catch { case cause: TreeNodeException[_] =>
-    ("Error occurred during query planning: \n" + cause.getMessage).split("\n").map(Row(_))
-  }
-}
-
-/** An explain command for users to see how a streaming batch is executed. */
-case class StreamingExplainCommand(
-    queryExecution: IncrementalExecution,
-    extended: Boolean) extends RunnableCommand {
-
-  override val output: Seq[Attribute] =
-    Seq(AttributeReference("plan", StringType, nullable = true)())
-
-  // Run through the optimizer to generate the physical plan.
-  override def run(sparkSession: SparkSession): Seq[Row] = try {
-    val outputString =
-      if (extended) {
         queryExecution.toString
       } else {
         queryExecution.simpleString

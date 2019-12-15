@@ -19,15 +19,10 @@ package org.apache.spark.sql.types;
 
 import java.util.*;
 
-import org.apache.spark.annotation.InterfaceStability;
-
 /**
  * To get/create specific data type, users should use singleton objects and factory methods
  * provided by this class.
- *
- * @since 1.3.0
  */
-@InterfaceStability.Stable
 public class DataTypes {
   /**
    * Gets the StringType object.
@@ -196,7 +191,7 @@ public class DataTypes {
    * Creates a StructType with the given list of StructFields ({@code fields}).
    */
   public static StructType createStructType(List<StructField> fields) {
-    return createStructType(fields.toArray(new StructField[fields.size()]));
+    return createStructType(fields.toArray(new StructField[0]));
   }
 
   /**

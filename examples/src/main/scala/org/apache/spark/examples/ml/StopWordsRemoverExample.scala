@@ -40,7 +40,7 @@ object StopWordsRemoverExample {
       (1, Seq("Mary", "had", "a", "little", "lamb"))
     )).toDF("id", "raw")
 
-    remover.transform(dataSet).show(false)
+    remover.transform(dataSet).show()
     // $example off$
 
     spark.stop()

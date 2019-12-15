@@ -21,40 +21,26 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.analysis.TypeCheckResult
 import org.apache.spark.sql.catalyst.expressions.codegen.{CodegenContext, ExprCode}
 import org.apache.spark.sql.types._
-import org.apache.spark.util.collection.unsafe.sort.PrefixComparators._
+import org.apache.spark.util.collection.unsafe.sort.PrefixComparators.BinaryPrefixComparator
+import org.apache.spark.util.collection.unsafe.sort.PrefixComparators.DoublePrefixComparator
 
 abstract sealed class SortDirection {
-  def sql: String
-  def defaultNullOrdering: NullOrdering
-}
-
-abstract sealed class NullOrdering {
   def sql: String
 }
 
 case object Ascending extends SortDirection {
   override def sql: String = "ASC"
-  override def defaultNullOrdering: NullOrdering = NullsFirst
 }
 
 case object Descending extends SortDirection {
   override def sql: String = "DESC"
-  override def defaultNullOrdering: NullOrdering = NullsLast
-}
-
-case object NullsFirst extends NullOrdering{
-  override def sql: String = "NULLS FIRST"
-}
-
-case object NullsLast extends NullOrdering{
-  override def sql: String = "NULLS LAST"
 }
 
 /**
  * An expression that can be used to sort a tuple.  This class extends expression primarily so that
  * transformations over expression will descend into its child.
  */
-case class SortOrder(child: Expression, direction: SortDirection, nullOrdering: NullOrdering)
+case class SortOrder(child: Expression, direction: SortDirection)
   extends UnaryExpression with Unevaluable {
 
   /** Sort order is not foldable because we don't have an eval for it. */
@@ -71,16 +57,10 @@ case class SortOrder(child: Expression, direction: SortDirection, nullOrdering: 
   override def dataType: DataType = child.dataType
   override def nullable: Boolean = child.nullable
 
-  override def toString: String = s"$child ${direction.sql} ${nullOrdering.sql}"
-  override def sql: String = child.sql + " " + direction.sql + " " + nullOrdering.sql
+  override def toString: String = s"$child ${direction.sql}"
+  override def sql: String = child.sql + " " + direction.sql
 
   def isAscending: Boolean = direction == Ascending
-}
-
-object SortOrder {
-  def apply(child: Expression, direction: SortDirection): SortOrder = {
-    new SortOrder(child, direction, direction.defaultNullOrdering)
-  }
 }
 
 /**
@@ -91,22 +71,12 @@ case class SortPrefix(child: SortOrder) extends UnaryExpression {
 
   val nullValue = child.child.dataType match {
     case BooleanType | DateType | TimestampType | _: IntegralType =>
-      if (nullAsSmallest) Long.MinValue else Long.MaxValue
+      Long.MinValue
     case dt: DecimalType if dt.precision - dt.scale <= Decimal.MAX_LONG_DIGITS =>
-      if (nullAsSmallest) Long.MinValue else Long.MaxValue
+      Long.MinValue
     case _: DecimalType =>
-      if (nullAsSmallest) {
-        DoublePrefixComparator.computePrefix(Double.NegativeInfinity)
-      } else {
-        DoublePrefixComparator.computePrefix(Double.NaN)
-      }
-    case _ =>
-      if (nullAsSmallest) 0L else -1L
-  }
-
-  private def nullAsSmallest: Boolean = {
-    (child.isAscending && child.nullOrdering == NullsFirst) ||
-      (!child.isAscending && child.nullOrdering == NullsLast)
+      DoublePrefixComparator.computePrefix(Double.NegativeInfinity)
+    case _ => 0L
   }
 
   override def eval(input: InternalRow): Any = throw new UnsupportedOperationException
@@ -116,7 +86,6 @@ case class SortPrefix(child: SortOrder) extends UnaryExpression {
     val input = childCode.value
     val BinaryPrefixCmp = classOf[BinaryPrefixComparator].getName
     val DoublePrefixCmp = classOf[DoublePrefixComparator].getName
-    val StringPrefixCmp = classOf[StringPrefixComparator].getName
     val prefixCode = child.child.dataType match {
       case BooleanType =>
         s"$input ? 1L : 0L"
@@ -126,7 +95,7 @@ case class SortPrefix(child: SortOrder) extends UnaryExpression {
         s"(long) $input"
       case FloatType | DoubleType =>
         s"$DoublePrefixCmp.computePrefix((double)$input)"
-      case StringType => s"$StringPrefixCmp.computePrefix($input)"
+      case StringType => s"$input.getPrefix()"
       case BinaryType => s"$BinaryPrefixCmp.computePrefix($input)"
       case dt: DecimalType if dt.precision - dt.scale <= Decimal.MAX_LONG_DIGITS =>
         if (dt.precision <= Decimal.MAX_LONG_DIGITS) {

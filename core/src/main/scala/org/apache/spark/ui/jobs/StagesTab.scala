@@ -39,16 +39,15 @@ private[ui] class StagesTab(parent: SparkUI) extends SparkUITab(parent, "stages"
 
   def handleKillRequest(request: HttpServletRequest): Unit = {
     if (killEnabled && parent.securityManager.checkModifyPermissions(request.getRemoteUser)) {
-      val stageId = Option(request.getParameter("id")).map(_.toInt)
-      stageId.foreach { id =>
-        if (progressListener.activeStages.contains(id)) {
-          sc.foreach(_.cancelStage(id))
-          // Do a quick pause here to give Spark time to kill the stage so it shows up as
-          // killed after the refresh. Note that this will block the serving thread so the
-          // time should be limited in duration.
-          Thread.sleep(100)
-        }
+      val killFlag = Option(request.getParameter("terminate")).getOrElse("false").toBoolean
+      val stageId = Option(request.getParameter("id")).getOrElse("-1").toInt
+      if (stageId >= 0 && killFlag && progressListener.activeStages.contains(stageId)) {
+        sc.get.cancelStage(stageId)
       }
+      // Do a quick pause here to give Spark time to kill the stage so it shows up as
+      // killed after the refresh. Note that this will block the serving thread so the
+      // time should be limited in duration.
+      Thread.sleep(100)
     }
   }
 

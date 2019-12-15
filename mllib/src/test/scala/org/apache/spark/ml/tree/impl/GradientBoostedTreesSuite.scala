@@ -32,15 +32,13 @@ import org.apache.spark.mllib.util.MLlibTestSparkContext
  */
 class GradientBoostedTreesSuite extends SparkFunSuite with MLlibTestSparkContext with Logging {
 
-  import testImplicits._
-
   test("runWithValidation stops early and performs better on a validation dataset") {
     // Set numIterations large enough so that it stops early.
     val numIterations = 20
     val trainRdd = sc.parallelize(OldGBTSuite.trainData, 2).map(_.asML)
     val validateRdd = sc.parallelize(OldGBTSuite.validateData, 2).map(_.asML)
-    val trainDF = trainRdd.toDF()
-    val validateDF = validateRdd.toDF()
+    val trainDF = spark.createDataFrame(trainRdd)
+    val validateDF = spark.createDataFrame(validateRdd)
 
     val algos = Array(Regression, Regression, Classification)
     val losses = Array(SquaredError, AbsoluteError, LogLoss)

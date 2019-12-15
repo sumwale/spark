@@ -28,9 +28,6 @@ import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.sql.functions.col
 
 class InteractionSuite extends SparkFunSuite with MLlibTestSparkContext with DefaultReadWriteTest {
-
-  import testImplicits._
-
   test("params") {
     ParamsSuite.checkParams(new Interaction())
   }
@@ -62,10 +59,11 @@ class InteractionSuite extends SparkFunSuite with MLlibTestSparkContext with Def
   }
 
   test("numeric interaction") {
-    val data = Seq(
-      (2, Vectors.dense(3.0, 4.0)),
-      (1, Vectors.dense(1.0, 5.0))
-    ).toDF("a", "b")
+    val data = spark.createDataFrame(
+      Seq(
+        (2, Vectors.dense(3.0, 4.0)),
+        (1, Vectors.dense(1.0, 5.0)))
+      ).toDF("a", "b")
     val groupAttr = new AttributeGroup(
       "b",
       Array[Attribute](
@@ -76,10 +74,11 @@ class InteractionSuite extends SparkFunSuite with MLlibTestSparkContext with Def
       col("b").as("b", groupAttr.toMetadata()))
     val trans = new Interaction().setInputCols(Array("a", "b")).setOutputCol("features")
     val res = trans.transform(df)
-    val expected = Seq(
-      (2, Vectors.dense(3.0, 4.0), Vectors.dense(6.0, 8.0)),
-      (1, Vectors.dense(1.0, 5.0), Vectors.dense(1.0, 5.0))
-    ).toDF("a", "b", "features")
+    val expected = spark.createDataFrame(
+      Seq(
+        (2, Vectors.dense(3.0, 4.0), Vectors.dense(6.0, 8.0)),
+        (1, Vectors.dense(1.0, 5.0), Vectors.dense(1.0, 5.0)))
+      ).toDF("a", "b", "features")
     assert(res.collect() === expected.collect())
     val attrs = AttributeGroup.fromStructField(res.schema("features"))
     val expectedAttrs = new AttributeGroup(
@@ -91,10 +90,11 @@ class InteractionSuite extends SparkFunSuite with MLlibTestSparkContext with Def
   }
 
   test("nominal interaction") {
-    val data = Seq(
-      (2, Vectors.dense(3.0, 4.0)),
-      (1, Vectors.dense(1.0, 5.0))
-    ).toDF("a", "b")
+    val data = spark.createDataFrame(
+      Seq(
+        (2, Vectors.dense(3.0, 4.0)),
+        (1, Vectors.dense(1.0, 5.0)))
+      ).toDF("a", "b")
     val groupAttr = new AttributeGroup(
       "b",
       Array[Attribute](
@@ -106,10 +106,11 @@ class InteractionSuite extends SparkFunSuite with MLlibTestSparkContext with Def
       col("b").as("b", groupAttr.toMetadata()))
     val trans = new Interaction().setInputCols(Array("a", "b")).setOutputCol("features")
     val res = trans.transform(df)
-    val expected = Seq(
-      (2, Vectors.dense(3.0, 4.0), Vectors.dense(0, 0, 0, 0, 3, 4)),
-      (1, Vectors.dense(1.0, 5.0), Vectors.dense(0, 0, 1, 5, 0, 0))
-    ).toDF("a", "b", "features")
+    val expected = spark.createDataFrame(
+      Seq(
+        (2, Vectors.dense(3.0, 4.0), Vectors.dense(0, 0, 0, 0, 3, 4)),
+        (1, Vectors.dense(1.0, 5.0), Vectors.dense(0, 0, 1, 5, 0, 0)))
+      ).toDF("a", "b", "features")
     assert(res.collect() === expected.collect())
     val attrs = AttributeGroup.fromStructField(res.schema("features"))
     val expectedAttrs = new AttributeGroup(
@@ -125,9 +126,10 @@ class InteractionSuite extends SparkFunSuite with MLlibTestSparkContext with Def
   }
 
   test("default attr names") {
-    val data = Seq(
+    val data = spark.createDataFrame(
+      Seq(
         (2, Vectors.dense(0.0, 4.0), 1.0),
-        (1, Vectors.dense(1.0, 5.0), 10.0)
+        (1, Vectors.dense(1.0, 5.0), 10.0))
       ).toDF("a", "b", "c")
     val groupAttr = new AttributeGroup(
       "b",
@@ -140,10 +142,11 @@ class InteractionSuite extends SparkFunSuite with MLlibTestSparkContext with Def
       col("c").as("c", NumericAttribute.defaultAttr.toMetadata()))
     val trans = new Interaction().setInputCols(Array("a", "b", "c")).setOutputCol("features")
     val res = trans.transform(df)
-    val expected = Seq(
-      (2, Vectors.dense(0.0, 4.0), 1.0, Vectors.dense(0, 0, 0, 0, 0, 0, 1, 0, 4)),
-      (1, Vectors.dense(1.0, 5.0), 10.0, Vectors.dense(0, 0, 0, 0, 10, 50, 0, 0, 0))
-    ).toDF("a", "b", "c", "features")
+    val expected = spark.createDataFrame(
+      Seq(
+        (2, Vectors.dense(0.0, 4.0), 1.0, Vectors.dense(0, 0, 0, 0, 0, 0, 1, 0, 4)),
+        (1, Vectors.dense(1.0, 5.0), 10.0, Vectors.dense(0, 0, 0, 0, 10, 50, 0, 0, 0)))
+      ).toDF("a", "b", "c", "features")
     assert(res.collect() === expected.collect())
     val attrs = AttributeGroup.fromStructField(res.schema("features"))
     val expectedAttrs = new AttributeGroup(

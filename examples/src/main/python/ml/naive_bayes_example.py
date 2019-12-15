@@ -45,15 +45,11 @@ if __name__ == "__main__":
     # train the model
     model = nb.fit(train)
 
-    # select example rows to display.
-    predictions = model.transform(test)
-    predictions.show()
-
     # compute accuracy on the test set
-    evaluator = MulticlassClassificationEvaluator(labelCol="label", predictionCol="prediction",
-                                                  metricName="accuracy")
-    accuracy = evaluator.evaluate(predictions)
-    print("Test set accuracy = " + str(accuracy))
+    result = model.transform(test)
+    predictionAndLabels = result.select("prediction", "label")
+    evaluator = MulticlassClassificationEvaluator(metricName="accuracy")
+    print("Accuracy: " + str(evaluator.evaluate(predictionAndLabels)))
     # $example off$
 
     spark.stop()

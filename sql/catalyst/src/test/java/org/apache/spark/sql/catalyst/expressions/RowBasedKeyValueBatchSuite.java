@@ -338,17 +338,15 @@ public class RowBasedKeyValueBatchSuite {
 
   @Test
   public void appendRowUntilExceedingPageSize() throws Exception {
-    // Use default size or spark.buffer.pageSize if specified
-    int pageSizeToUse = (int) memoryManager.pageSizeBytes();
     RowBasedKeyValueBatch batch = RowBasedKeyValueBatch.allocate(keySchema,
-            valueSchema, taskMemoryManager, pageSizeToUse); //enough capacity
+            valueSchema, taskMemoryManager, 64 * 1024 * 1024); //enough capacity
     try {
       UnsafeRow key = makeKeyRow(1, "A");
       UnsafeRow value = makeValueRow(1, 1);
       int recordLength = 8 + key.getSizeInBytes() + value.getSizeInBytes() + 8;
       int totalSize = 4;
       int numRows = 0;
-      while (totalSize + recordLength < pageSizeToUse) {
+      while (totalSize + recordLength < 64 * 1024 * 1024) { // default page size
         appendRow(batch, key, value);
         totalSize += recordLength;
         numRows++;

@@ -19,10 +19,7 @@ package org.apache.spark.sql.types
 
 import scala.language.existentials
 
-import org.apache.spark.annotation.InterfaceStability
-
-@InterfaceStability.Evolving
-object ObjectType extends AbstractDataType {
+private[sql] object ObjectType extends AbstractDataType {
   override private[sql] def defaultConcreteType: DataType =
     throw new UnsupportedOperationException("null literals can't be casted to ObjectType")
 
@@ -35,18 +32,14 @@ object ObjectType extends AbstractDataType {
 }
 
 /**
- * Represents a JVM object that is passing through Spark SQL expression evaluation.
+ * Represents a JVM object that is passing through Spark SQL expression evaluation.  Note this
+ * is only used internally while converting into the internal format and is not intended for use
+ * outside of the execution engine.
  */
-@InterfaceStability.Evolving
-case class ObjectType(cls: Class[_]) extends DataType {
+private[sql] case class ObjectType(cls: Class[_]) extends DataType {
   override def defaultSize: Int = 4096
 
   def asNullable: DataType = this
 
   override def simpleString: String = cls.getName
-
-  override def acceptsType(other: DataType): Boolean = other match {
-    case ObjectType(otherCls) => cls.isAssignableFrom(otherCls)
-    case _ => false
-  }
 }

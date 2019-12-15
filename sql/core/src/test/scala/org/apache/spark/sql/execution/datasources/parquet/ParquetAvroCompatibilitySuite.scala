@@ -27,7 +27,6 @@ import org.apache.avro.Schema
 import org.apache.avro.generic.IndexedRecord
 import org.apache.hadoop.fs.Path
 import org.apache.parquet.avro.AvroParquetWriter
-import org.apache.parquet.hadoop.ParquetWriter
 
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.execution.datasources.parquet.test.avro._
@@ -36,14 +35,14 @@ import org.apache.spark.sql.test.SharedSQLContext
 class ParquetAvroCompatibilitySuite extends ParquetCompatibilityTest with SharedSQLContext {
   private def withWriter[T <: IndexedRecord]
       (path: String, schema: Schema)
-      (f: ParquetWriter[T] => Unit): Unit = {
+      (f: AvroParquetWriter[T] => Unit): Unit = {
     logInfo(
       s"""Writing Avro records with the following Avro schema into Parquet file:
          |
          |${schema.toString(true)}
        """.stripMargin)
 
-    val writer = AvroParquetWriter.builder[T](new Path(path)).withSchema(schema).build()
+    val writer = new AvroParquetWriter[T](new Path(path), schema)
     try f(writer) finally writer.close()
   }
 

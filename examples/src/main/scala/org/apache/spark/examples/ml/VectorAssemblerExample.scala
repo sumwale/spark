@@ -41,8 +41,7 @@ object VectorAssemblerExample {
       .setOutputCol("features")
 
     val output = assembler.transform(dataset)
-    println("Assembled columns 'hour', 'mobile', 'userFeatures' to vector column 'features'")
-    output.select("features", "clicked").show(false)
+    println(output.select("features", "clicked").first())
     // $example off$
 
     spark.stop()

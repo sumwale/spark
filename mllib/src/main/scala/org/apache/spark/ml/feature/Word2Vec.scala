@@ -43,8 +43,7 @@ private[feature] trait Word2VecBase extends Params
    * @group param
    */
   final val vectorSize = new IntParam(
-    this, "vectorSize", "the dimension of codes after transforming from words (> 0)",
-    ParamValidators.gt(0))
+    this, "vectorSize", "the dimension of codes after transforming from words")
   setDefault(vectorSize -> 100)
 
   /** @group getParam */
@@ -56,8 +55,7 @@ private[feature] trait Word2VecBase extends Params
    * @group expertParam
    */
   final val windowSize = new IntParam(
-    this, "windowSize", "the window size (context words from [-window, window]) (> 0)",
-    ParamValidators.gt(0))
+    this, "windowSize", "the window size (context words from [-window, window])")
   setDefault(windowSize -> 5)
 
   /** @group expertGetParam */
@@ -69,8 +67,7 @@ private[feature] trait Word2VecBase extends Params
    * @group param
    */
   final val numPartitions = new IntParam(
-    this, "numPartitions", "number of partitions for sentences of words (> 0)",
-    ParamValidators.gt(0))
+    this, "numPartitions", "number of partitions for sentences of words")
   setDefault(numPartitions -> 1)
 
   /** @group getParam */
@@ -83,7 +80,7 @@ private[feature] trait Word2VecBase extends Params
    * @group param
    */
   final val minCount = new IntParam(this, "minCount", "the minimum number of times a token must " +
-    "appear to be included in the word2vec model's vocabulary (>= 0)", ParamValidators.gtEq(0))
+    "appear to be included in the word2vec model's vocabulary")
   setDefault(minCount -> 5)
 
   /** @group getParam */
@@ -98,7 +95,7 @@ private[feature] trait Word2VecBase extends Params
    */
   final val maxSentenceLength = new IntParam(this, "maxSentenceLength", "Maximum length " +
     "(in words) of each sentence in the input data. Any sentence longer than this threshold will " +
-    "be divided into chunks up to the size (> 0)", ParamValidators.gt(0))
+    "be divided into chunks up to the size.")
   setDefault(maxSentenceLength -> 1000)
 
   /** @group getParam */
@@ -111,8 +108,7 @@ private[feature] trait Word2VecBase extends Params
    * Validate and transform the input schema.
    */
   protected def validateAndTransformSchema(schema: StructType): StructType = {
-    val typeCandidates = List(new ArrayType(StringType, true), new ArrayType(StringType, false))
-    SchemaUtils.checkColumnTypes(schema, $(inputCol), typeCandidates)
+    SchemaUtils.checkColumnType(schema, $(inputCol), new ArrayType(StringType, true))
     SchemaUtils.appendColumn(schema, $(outputCol), new VectorUDT)
   }
 }
@@ -225,26 +221,24 @@ class Word2VecModel private[ml] (
   }
 
   /**
-   * Find "num" number of words closest in similarity to the given word, not
-   * including the word itself. Returns a dataframe with the words and the
-   * cosine similarities between the synonyms and the given word.
+   * Find "num" number of words closest in similarity to the given word.
+   * Returns a dataframe with the words and the cosine similarities between the
+   * synonyms and the given word.
    */
   @Since("1.5.0")
   def findSynonyms(word: String, num: Int): DataFrame = {
-    val spark = SparkSession.builder().getOrCreate()
-    spark.createDataFrame(wordVectors.findSynonyms(word, num)).toDF("word", "similarity")
+    findSynonyms(wordVectors.transform(word), num)
   }
 
   /**
-   * Find "num" number of words whose vector representation most similar to the supplied vector.
-   * If the supplied vector is the vector representation of a word in the model's vocabulary,
-   * that word will be in the results.  Returns a dataframe with the words and the cosine
-   * similarities between the synonyms and the given word vector.
+   * Find "num" number of words closest to similarity to the given vector representation
+   * of the word. Returns a dataframe with the words and the cosine similarities between the
+   * synonyms and the given word vector.
    */
   @Since("2.0.0")
-  def findSynonyms(vec: Vector, num: Int): DataFrame = {
+  def findSynonyms(word: Vector, num: Int): DataFrame = {
     val spark = SparkSession.builder().getOrCreate()
-    spark.createDataFrame(wordVectors.findSynonyms(vec, num)).toDF("word", "similarity")
+    spark.createDataFrame(wordVectors.findSynonyms(word, num)).toDF("word", "similarity")
   }
 
   /** @group setParam */

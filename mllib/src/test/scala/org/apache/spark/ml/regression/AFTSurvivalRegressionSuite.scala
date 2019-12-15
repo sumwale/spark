@@ -22,8 +22,8 @@ import scala.util.Random
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.ml.linalg.{Vector, Vectors}
 import org.apache.spark.ml.param.ParamsSuite
-import org.apache.spark.ml.util.TestingUtils._
 import org.apache.spark.ml.util.{DefaultReadWriteTest, MLTestingUtils}
+import org.apache.spark.ml.util.TestingUtils._
 import org.apache.spark.mllib.random.{ExponentialGenerator, WeibullGenerator}
 import org.apache.spark.mllib.util.MLlibTestSparkContext
 import org.apache.spark.sql.{DataFrame, Row}
@@ -31,22 +31,23 @@ import org.apache.spark.sql.{DataFrame, Row}
 class AFTSurvivalRegressionSuite
   extends SparkFunSuite with MLlibTestSparkContext with DefaultReadWriteTest {
 
-  import testImplicits._
-
   @transient var datasetUnivariate: DataFrame = _
   @transient var datasetMultivariate: DataFrame = _
   @transient var datasetUnivariateScaled: DataFrame = _
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    datasetUnivariate = generateAFTInput(
-      1, Array(5.5), Array(0.8), 1000, 42, 1.0, 2.0, 2.0).toDF()
-    datasetMultivariate = generateAFTInput(
-      2, Array(0.9, -1.3), Array(0.7, 1.2), 1000, 42, 1.5, 2.5, 2.0).toDF()
-    datasetUnivariateScaled = sc.parallelize(
-      generateAFTInput(1, Array(5.5), Array(0.8), 1000, 42, 1.0, 2.0, 2.0)).map { x =>
-        AFTPoint(Vectors.dense(x.features(0) * 1.0E3), x.label, x.censor)
-      }.toDF()
+    datasetUnivariate = spark.createDataFrame(
+      sc.parallelize(generateAFTInput(
+        1, Array(5.5), Array(0.8), 1000, 42, 1.0, 2.0, 2.0)))
+    datasetMultivariate = spark.createDataFrame(
+      sc.parallelize(generateAFTInput(
+        2, Array(0.9, -1.3), Array(0.7, 1.2), 1000, 42, 1.5, 2.5, 2.0)))
+    datasetUnivariateScaled = spark.createDataFrame(
+      sc.parallelize(generateAFTInput(
+        1, Array(5.5), Array(0.8), 1000, 42, 1.0, 2.0, 2.0)).map { x =>
+          AFTPoint(Vectors.dense(x.features(0) * 1.0E3), x.label, x.censor)
+      })
   }
 
   /**
@@ -81,6 +82,7 @@ class AFTSurvivalRegressionSuite
       .setQuantilesCol("quantiles")
       .fit(datasetUnivariate)
 
+    // copied model must have the same parent.
     MLTestingUtils.checkCopy(model)
 
     model.transform(datasetUnivariate)
@@ -394,8 +396,9 @@ class AFTSurvivalRegressionSuite
     // the parallelism is bigger than that. Because the issue was about `AFTAggregator`s
     // being merged incorrectly when it has an empty partition, running the codes below
     // should not throw an exception.
-    val dataset = sc.parallelize(generateAFTInput(
-      1, Array(5.5), Array(0.8), 2, 42, 1.0, 2.0, 2.0), numSlices = 3).toDF()
+    val dataset = spark.createDataFrame(
+      sc.parallelize(generateAFTInput(
+        1, Array(5.5), Array(0.8), 2, 42, 1.0, 2.0, 2.0), numSlices = 3))
     val trainer = new AFTSurvivalRegression()
     trainer.fit(dataset)
   }

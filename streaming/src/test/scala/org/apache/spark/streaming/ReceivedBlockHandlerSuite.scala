@@ -23,7 +23,6 @@ import java.nio.ByteBuffer
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration._
 import scala.language.postfixOps
-import scala.reflect.ClassTag
 
 import org.apache.hadoop.conf.Configuration
 import org.scalatest.{BeforeAndAfter, Matchers}
@@ -32,12 +31,10 @@ import org.scalatest.concurrent.Eventually._
 import org.apache.spark._
 import org.apache.spark.broadcast.BroadcastManager
 import org.apache.spark.internal.Logging
-import org.apache.spark.internal.config._
 import org.apache.spark.memory.StaticMemoryManager
 import org.apache.spark.network.netty.NettyBlockTransferService
 import org.apache.spark.rpc.RpcEnv
 import org.apache.spark.scheduler.LiveListenerBus
-import org.apache.spark.security.CryptoStreamUtils
 import org.apache.spark.serializer.{KryoSerializer, SerializerManager}
 import org.apache.spark.shuffle.sort.SortShuffleManager
 import org.apache.spark.storage._
@@ -46,7 +43,7 @@ import org.apache.spark.streaming.util._
 import org.apache.spark.util.{ManualClock, Utils}
 import org.apache.spark.util.io.ChunkedByteBuffer
 
-abstract class BaseReceivedBlockHandlerSuite(enableEncryption: Boolean)
+class ReceivedBlockHandlerSuite
   extends SparkFunSuite
   with BeforeAndAfter
   with Matchers
@@ -59,22 +56,14 @@ abstract class BaseReceivedBlockHandlerSuite(enableEncryption: Boolean)
   val conf = new SparkConf()
     .set("spark.streaming.receiver.writeAheadLog.rollingIntervalSecs", "1")
     .set("spark.app.id", "streaming-test")
-    .set(IO_ENCRYPTION_ENABLED, enableEncryption)
-  val encryptionKey =
-    if (enableEncryption) {
-      Some(CryptoStreamUtils.createKey(conf))
-    } else {
-      None
-    }
-
   val hadoopConf = new Configuration()
   val streamId = 1
-  val securityMgr = new SecurityManager(conf, encryptionKey)
+  val securityMgr = new SecurityManager(conf)
   val broadcastManager = new BroadcastManager(true, conf, securityMgr)
   val mapOutputTracker = new MapOutputTrackerMaster(conf, broadcastManager, true)
   val shuffleManager = new SortShuffleManager(conf)
   val serializer = new KryoSerializer(conf)
-  var serializerManager = new SerializerManager(serializer, conf, encryptionKey)
+  var serializerManager = new SerializerManager(serializer, conf)
   val manualClock = new ManualClock
   val blockManagerSize = 10000000
   val blockManagerBuffer = new ArrayBuffer[BlockManager]()
@@ -174,9 +163,7 @@ abstract class BaseReceivedBlockHandlerSuite(enableEncryption: Boolean)
           val bytes = reader.read(fileSegment)
           reader.close()
           serializerManager.dataDeserializeStream(
-            generateBlockId(),
-            new ChunkedByteBuffer(bytes).toInputStream(),
-            maybeEncrypted = false)(ClassTag.Any).toList
+            generateBlockId(), new ChunkedByteBuffer(bytes).toInputStream()).toList
         }
         loggedData shouldEqual data
       }
@@ -220,8 +207,6 @@ abstract class BaseReceivedBlockHandlerSuite(enableEncryption: Boolean)
     sparkConf.set("spark.storage.unrollMemoryThreshold", "512")
     // spark.storage.unrollFraction set to 0.4 for BlockManager
     sparkConf.set("spark.storage.unrollFraction", "0.4")
-
-    sparkConf.set(IO_ENCRYPTION_ENABLED, enableEncryption)
     // Block Manager with 12000 * 0.4 = 4800 bytes of free space for unroll
     blockManager = createBlockManager(12000, sparkConf)
 
@@ -286,7 +271,7 @@ abstract class BaseReceivedBlockHandlerSuite(enableEncryption: Boolean)
       conf: SparkConf,
       name: String = SparkContext.DRIVER_IDENTIFIER): BlockManager = {
     val memManager = new StaticMemoryManager(conf, Long.MaxValue, maxMem, numCores = 1)
-    val transfer = new NettyBlockTransferService(conf, securityMgr, "localhost", "localhost", 0, 1)
+    val transfer = new NettyBlockTransferService(conf, securityMgr, "localhost", numCores = 1)
     val blockManager = new BlockManager(name, rpcEnv, blockManagerMaster, serializerManager, conf,
       memManager, mapOutputTracker, shuffleManager, transfer, securityMgr, 0)
     memManager.setMemoryStore(blockManager.memoryStore)
@@ -357,7 +342,7 @@ abstract class BaseReceivedBlockHandlerSuite(enableEncryption: Boolean)
     }
 
     def dataToByteBuffer(b: Seq[String]) =
-      serializerManager.dataSerialize(generateBlockId, b.iterator, allowEncryption = false)
+      serializerManager.dataSerialize(generateBlockId, b.iterator)
 
     val blocks = data.grouped(10).toSeq
 
@@ -432,6 +417,3 @@ abstract class BaseReceivedBlockHandlerSuite(enableEncryption: Boolean)
   private def generateBlockId(): StreamBlockId = StreamBlockId(streamId, scala.util.Random.nextLong)
 }
 
-class ReceivedBlockHandlerSuite extends BaseReceivedBlockHandlerSuite(false)
-
-class ReceivedBlockHandlerWithEncryptionSuite extends BaseReceivedBlockHandlerSuite(true)

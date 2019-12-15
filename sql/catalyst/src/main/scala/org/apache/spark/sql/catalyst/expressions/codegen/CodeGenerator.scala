@@ -23,7 +23,6 @@ import java.util.{Map => JavaMap}
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-import scala.util.control.NonFatal
 
 import com.google.common.cache.{CacheBuilder, CacheLoader}
 import org.codehaus.janino.{ByteArrayClassLoader, ClassBodyEvaluator, SimpleCompiler}
@@ -83,21 +82,6 @@ class CodegenContext {
    * Holding a list of objects that could be used passed into generated class.
    */
   val references: mutable.ArrayBuffer[Any] = new mutable.ArrayBuffer[Any]()
-
-  /**
-   * Add an object to `references`.
-   *
-   * Returns the code to access it.
-   *
-   * This is for minor objects not to store the object into field but refer it from the references
-   * field at the time of use because number of fields in class is limited so we should reduce it.
-   */
-  def addReferenceObj(obj: Any): String = {
-    val idx = references.length
-    references += obj
-    val clsName = obj.getClass.getName
-    s"(($clsName) references[$idx])"
-  }
 
   /**
    * Add an object to `references`, create a class member to access it.
@@ -178,24 +162,7 @@ class CodegenContext {
   def initMutableStates(): String = {
     // It's possible that we add same mutable state twice, e.g. the `mergeExpressions` in
     // `TypedAggregateExpression`, we should call `distinct` here to remove the duplicated ones.
-    val initCodes = mutableStates.distinct.map(_._3 + "\n")
-    // The generated initialization code may exceed 64kb function size limit in JVM if there are too
-    // many mutable states, so split it into multiple functions.
-    splitExpressions(initCodes, "init", Nil)
-  }
-
-  /**
-   * Code statements to initialize states that depend on the partition index.
-   * An integer `partitionIndex` will be made available within the scope.
-   */
-  val partitionInitializationStatements: mutable.ArrayBuffer[String] = mutable.ArrayBuffer.empty
-
-  def addPartitionInitializationStatement(statement: String): Unit = {
-    partitionInitializationStatements += statement
-  }
-
-  def initPartition(): String = {
-    partitionInitializationStatements.mkString("\n")
+    mutableStates.distinct.map(_._3).mkString("\n")
   }
 
   /**
@@ -481,13 +448,8 @@ class CodegenContext {
     case FloatType => s"(java.lang.Float.isNaN($c1) && java.lang.Float.isNaN($c2)) || $c1 == $c2"
     case DoubleType => s"(java.lang.Double.isNaN($c1) && java.lang.Double.isNaN($c2)) || $c1 == $c2"
     case dt: DataType if isPrimitiveType(dt) => s"$c1 == $c2"
-    case dt: DataType if dt.isInstanceOf[AtomicType] => s"$c1.equals($c2)"
-    case array: ArrayType => genComp(array, c1, c2) + " == 0"
-    case struct: StructType => genComp(struct, c1, c2) + " == 0"
     case udt: UserDefinedType[_] => genEqual(udt.sqlType, c1, c2)
-    case _ =>
-      throw new IllegalArgumentException(
-        "cannot generate equality code for un-comparable type: " + dataType.simpleString)
+    case other => s"$c1.equals($c2)"
   }
 
   /**
@@ -517,11 +479,6 @@ class CodegenContext {
       val funcCode: String =
         s"""
           public int $compareFunc(ArrayData a, ArrayData b) {
-            // when comparing unsafe arrays, try equals first as it compares the binary directly
-            // which is very fast.
-            if (a instanceof UnsafeArrayData && b instanceof UnsafeArrayData && a.equals(b)) {
-              return 0;
-            }
             int lengthA = a.numElements();
             int lengthB = b.numElements();
             int $minLength = (lengthA > lengthB) ? lengthB : lengthA;
@@ -555,16 +512,13 @@ class CodegenContext {
       addNewFunction(compareFunc, funcCode)
       s"this.$compareFunc($c1, $c2)"
     case schema: StructType =>
+      INPUT_ROW = "i"
       val comparisons = GenerateOrdering.genComparisons(this, schema)
       val compareFunc = freshName("compareStruct")
       val funcCode: String =
         s"""
           public int $compareFunc(InternalRow a, InternalRow b) {
-            // when comparing unsafe rows, try equals first as it compares the binary directly
-            // which is very fast.
-            if (a instanceof UnsafeRow && b instanceof UnsafeRow && a.equals(b)) {
-              return 0;
-            }
+            InternalRow i = null;
             $comparisons
             return 0;
           }
@@ -574,8 +528,7 @@ class CodegenContext {
     case other if other.isInstanceOf[AtomicType] => s"$c1.compare($c2)"
     case udt: UserDefinedType[_] => genComp(udt.sqlType, c1, c2)
     case _ =>
-      throw new IllegalArgumentException(
-        "cannot generate compare code for un-comparable type: " + dataType.simpleString)
+      throw new IllegalArgumentException("cannot generate compare code for un-comparable type")
   }
 
   /**
@@ -631,64 +584,39 @@ class CodegenContext {
    * @param expressions the codes to evaluate expressions.
    */
   def splitExpressions(row: String, expressions: Seq[String]): String = {
-    if (row == null || currentVars != null) {
+    if (row == null) {
       // Cannot split these expressions because they are not created from a row object.
       return expressions.mkString("\n")
     }
-    splitExpressions(expressions, "apply", ("InternalRow", row) :: Nil)
-  }
-
-  /**
-   * Splits the generated code of expressions into multiple functions, because function has
-   * 64kb code size limit in JVM
-   *
-   * @param expressions the codes to evaluate expressions.
-   * @param funcName the split function name base.
-   * @param arguments the list of (type, name) of the arguments of the split function.
-   * @param returnType the return type of the split function.
-   * @param makeSplitFunction makes split function body, e.g. add preparation or cleanup.
-   * @param foldFunctions folds the split function calls.
-   */
-  def splitExpressions(
-      expressions: Seq[String],
-      funcName: String,
-      arguments: Seq[(String, String)],
-      returnType: String = "void",
-      makeSplitFunction: String => String = identity,
-      foldFunctions: Seq[String] => String = _.mkString("", ";\n", ";")): String = {
     val blocks = new ArrayBuffer[String]()
     val blockBuilder = new StringBuilder()
     for (code <- expressions) {
-      // We can't know how many bytecode will be generated, so use the length of source code
-      // as metric. A method should not go beyond 8K, otherwise it will not be JITted, should
-      // also not be too small, or it will have many function calls (for wide table), see the
-      // results in BenchmarkWideTable.
-      if (blockBuilder.length > 1024) {
-        blocks += blockBuilder.toString()
+      // We can't know how many byte code will be generated, so use the number of bytes as limit
+      if (blockBuilder.length > 64 * 1000) {
+        blocks.append(blockBuilder.toString())
         blockBuilder.clear()
       }
       blockBuilder.append(code)
     }
-    blocks += blockBuilder.toString()
+    blocks.append(blockBuilder.toString())
 
     if (blocks.length == 1) {
       // inline execution if only one block
       blocks.head
     } else {
-      val func = freshName(funcName)
-      val argString = arguments.map { case (t, name) => s"$t $name" }.mkString(", ")
+      val apply = freshName("apply")
       val functions = blocks.zipWithIndex.map { case (body, i) =>
-        val name = s"${func}_$i"
+        val name = s"${apply}_$i"
         val code = s"""
-           |private $returnType $name($argString) {
-           |  ${makeSplitFunction(body)}
+           |private void $name(InternalRow $row) {
+           |  $body
            |}
          """.stripMargin
         addNewFunction(name, code)
         name
       }
 
-      foldFunctions(functions.map(name => s"$name(${arguments.map(_._2).mkString(", ")})"))
+      functions.map(name => s"$name($row);").mkString("\n")
     }
   }
 
@@ -731,6 +659,10 @@ class CodegenContext {
     val commonExprs = equivalentExpressions.getAllEquivalentExprs.filter(_.size > 1)
     val codes = commonExprs.map { e =>
       val expr = e.head
+      val fnName = freshName("evalExpr")
+      val isNull = s"${fnName}IsNull"
+      val value = s"${fnName}Value"
+
       // Generate the code for this expression tree.
       val code = expr.genCode(this)
       val state = SubExprEliminationState(code.isNull, code.value)
@@ -849,23 +781,12 @@ abstract class GeneratedClass {
  */
 class CodeAndComment(val body: String, val comment: collection.Map[String, String])
   extends Serializable {
-
-  private[sql] var hash: Int = 0
-
   override def equals(that: Any): Boolean = that match {
     case t: CodeAndComment if t.body == body => true
     case _ => false
   }
 
-  // noinspection HashCodeUsesVar
-  override def hashCode(): Int = {
-    val h = hash
-    if (h != 0) h
-    else {
-      hash = body.hashCode
-      hash
-    }
-  }
+  override def hashCode(): Int = body.hashCode
 }
 
 /**
@@ -875,7 +796,7 @@ class CodeAndComment(val body: String, val comment: collection.Map[String, Strin
  */
 abstract class CodeGenerator[InType <: AnyRef, OutType <: AnyRef] extends Logging {
 
-  protected val genericMutableRowType: String = classOf[GenericInternalRow].getName
+  protected val genericMutableRowType: String = classOf[GenericMutableRow].getName
 
   /**
    * Generates a class for a given input expression.  Called when there is not cached code
@@ -909,17 +830,11 @@ abstract class CodeGenerator[InType <: AnyRef, OutType <: AnyRef] extends Loggin
 }
 
 object CodeGenerator extends Logging {
-  val jobClassLoader = new ThreadLocal[ClassLoader]
-
   /**
    * Compile the Java source code into a Java class, using Janino.
    */
   def compile(code: CodeAndComment): GeneratedClass = {
-    cache.get((code, jobClassLoader.get()))
-  }
-
-  def invalidate(code: CodeAndComment) : Unit = {
-    cache.invalidate((code, jobClassLoader.get()))
+    cache.get(code)
   }
 
   /**
@@ -951,6 +866,7 @@ object CodeGenerator extends Logging {
       classOf[UnsafeArrayData].getName,
       classOf[MapData].getName,
       classOf[UnsafeMapData].getName,
+      classOf[MutableRow].getName,
       classOf[Expression].getName
     ))
     evaluator.setExtendedClass(classOf[GeneratedClass])
@@ -995,19 +911,14 @@ object CodeGenerator extends Logging {
     codeAttrField.setAccessible(true)
     classes.foreach { case (_, classBytes) =>
       CodegenMetrics.METRIC_GENERATED_CLASS_BYTECODE_SIZE.update(classBytes.length)
-      try {
-        val cf = new ClassFile(new ByteArrayInputStream(classBytes))
-        cf.methodInfos.asScala.foreach { method =>
-          method.getAttributes().foreach { a =>
-            if (a.getClass.getName == codeAttr.getName) {
-              CodegenMetrics.METRIC_GENERATED_METHOD_BYTECODE_SIZE.update(
-                codeAttrField.get(a).asInstanceOf[Array[Byte]].length)
-            }
+      val cf = new ClassFile(new ByteArrayInputStream(classBytes))
+      cf.methodInfos.asScala.foreach { method =>
+        method.getAttributes().foreach { a =>
+          if (a.getClass.getName == codeAttr.getName) {
+            CodegenMetrics.METRIC_GENERATED_METHOD_BYTECODE_SIZE.update(
+              codeAttrField.get(a).asInstanceOf[Array[Byte]].length)
           }
         }
-      } catch {
-        case NonFatal(e) =>
-          logWarning("Error calculating stats of compiled class.", e)
       }
     }
   }
@@ -1021,23 +932,19 @@ object CodeGenerator extends Logging {
    * automatically, in order to constrain its memory footprint.  Note that this cache does not use
    * weak keys/values and thus does not respond to memory pressure.
    */
-  private lazy val cache = {
-    val env = SparkEnv.get
-    val cacheSize = if (env ne null) {
-      env.conf.getInt("spark.sql.codegen.cacheSize", 2000)
-    } else 2000
-    CacheBuilder.newBuilder().maximumSize(cacheSize).build(
-      new CacheLoader[(CodeAndComment, ClassLoader), GeneratedClass]() {
-        override def load(codeAndClassLoader: (CodeAndComment, ClassLoader)): GeneratedClass = {
+  private val cache = CacheBuilder.newBuilder()
+    .maximumSize(100)
+    .build(
+      new CacheLoader[CodeAndComment, GeneratedClass]() {
+        override def load(code: CodeAndComment): GeneratedClass = {
           val startTime = System.nanoTime()
-          val result = doCompile(codeAndClassLoader._1)
+          val result = doCompile(code)
           val endTime = System.nanoTime()
           def timeMs: Double = (endTime - startTime).toDouble / 1000000
-          CodegenMetrics.METRIC_SOURCE_CODE_SIZE.update(codeAndClassLoader._1.body.length)
+          CodegenMetrics.METRIC_SOURCE_CODE_SIZE.update(code.body.length)
           CodegenMetrics.METRIC_COMPILATION_TIME.update(timeMs.toLong)
           logInfo(s"Code generated in $timeMs ms")
           result
         }
       })
-  }
 }

@@ -637,16 +637,12 @@ private[spark] object BLAS extends Serializable with Logging {
         val indEnd = Arows(rowCounter + 1)
         var sum = 0.0
         var k = 0
-        while (i < indEnd && k < xNnz) {
+        while (k < xNnz && i < indEnd) {
           if (xIndices(k) == Acols(i)) {
             sum += Avals(i) * xValues(k)
-            k += 1
-            i += 1
-          } else if (xIndices(k) < Acols(i)) {
-            k += 1
-          } else {
             i += 1
           }
+          k += 1
         }
         yValues(rowCounter) = sum * alpha + beta * yValues(rowCounter)
         rowCounter += 1

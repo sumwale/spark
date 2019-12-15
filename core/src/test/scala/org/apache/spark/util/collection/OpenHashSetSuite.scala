@@ -176,9 +176,4 @@ class OpenHashSetSuite extends SparkFunSuite with Matchers {
     assert(set.size === 1000)
     assert(set.capacity > 1000)
   }
-
-  test("SPARK-18200 Support zero as an initial set size") {
-    val set = new OpenHashSet[Long](0)
-    assert(set.size === 0)
-  }
 }

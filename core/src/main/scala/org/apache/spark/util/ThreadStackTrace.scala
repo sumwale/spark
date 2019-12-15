@@ -24,8 +24,4 @@ private[spark] case class ThreadStackTrace(
   threadId: Long,
   threadName: String,
   threadState: Thread.State,
-  stackTrace: String,
-  blockedByThreadId: Option[Long],
-  blockedByLock: String,
-  holdingLocks: Seq[String])
-
+  stackTrace: String)

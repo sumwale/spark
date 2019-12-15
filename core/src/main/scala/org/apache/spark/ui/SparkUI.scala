@@ -20,8 +20,6 @@ package org.apache.spark.ui
 import java.util.{Date, ServiceLoader}
 
 import scala.collection.JavaConverters._
-import scala.collection.mutable.ArrayBuffer
-import scala.collection.mutable.HashMap
 
 import org.apache.spark.{SecurityManager, SparkConf, SparkContext}
 import org.apache.spark.internal.Logging
@@ -40,7 +38,7 @@ import org.apache.spark.util.Utils
 /**
  * Top level user interface for a Spark application.
  */
-class SparkUI private (
+private[spark] class SparkUI private (
     val sc: Option[SparkContext],
     val conf: SparkConf,
     securityManager: SecurityManager,
@@ -60,13 +58,14 @@ class SparkUI private (
 
   val killEnabled = sc.map(_.conf.getBoolean("spark.ui.killEnabled", true)).getOrElse(false)
 
+
+  val stagesTab = new StagesTab(this)
+
   var appId: String = _
 
   /** Initialize all components of the server. */
   def initialize() {
-    val jobsTab = new JobsTab(this)
-    attachTab(jobsTab)
-    val stagesTab = new StagesTab(this)
+    attachTab(new JobsTab(this))
     attachTab(stagesTab)
     attachTab(new StorageTab(this))
     attachTab(new EnvironmentTab(this))
@@ -74,9 +73,7 @@ class SparkUI private (
     attachHandler(createStaticHandler(SparkUI.STATIC_RESOURCE_DIR, "/static"))
     attachHandler(createRedirectHandler("/", "/jobs/", basePath = basePath))
     attachHandler(ApiRootResource.getServletHandler(this))
-    // These should be POST only, but, the YARN AM proxy won't proxy POSTs
-    attachHandler(createRedirectHandler(
-      "/jobs/job/kill", "/jobs/", jobsTab.handleKillRequest, httpMethods = Set("GET", "POST")))
+    // This should be POST only, but, the YARN AM proxy won't proxy POSTs
     attachHandler(createRedirectHandler(
       "/stages/stage/kill", "/stages/", stagesTab.handleKillRequest,
       httpMethods = Set("GET", "POST")))
@@ -91,10 +88,6 @@ class SparkUI private (
 
   def setAppId(id: String): Unit = {
     appId = id
-  }
-
-  def setTabs(newTabs: ArrayBuffer[WebUITab]): Unit = {
-    tabs = newTabs
   }
 
   /** Stop the server behind this web interface. Only valid after bind(). */
@@ -133,10 +126,6 @@ class SparkUI private (
       ))
     ))
   }
-
-  def getApplicationInfo(appId: String): Option[ApplicationInfo] = {
-    getApplicationInfoList.find(_.id == appId)
-  }
 }
 
 private[spark] abstract class SparkUITab(parent: SparkUI, prefix: String)
@@ -152,16 +141,6 @@ private[spark] object SparkUI {
   val DEFAULT_POOL_NAME = "default"
   val DEFAULT_RETAINED_STAGES = 1000
   val DEFAULT_RETAINED_JOBS = 1000
-
-  var productVersion: HashMap[String, String] = HashMap.empty[String, String]
-
-  def getProductVersion: HashMap[String, String] = {
-    productVersion
-  }
-
-  def setProductVersion(versionDetails: HashMap[String, String]): Unit = {
-    productVersion = versionDetails
-  }
 
   def getUIPort(conf: SparkConf): Int = {
     conf.getInt("spark.ui.port", SparkUI.DEFAULT_PORT)

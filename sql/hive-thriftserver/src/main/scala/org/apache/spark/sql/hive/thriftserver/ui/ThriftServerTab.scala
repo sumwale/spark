@@ -30,7 +30,7 @@ import org.apache.spark.ui.{SparkUI, SparkUITab}
 private[thriftserver] class ThriftServerTab(sparkContext: SparkContext)
   extends SparkUITab(getSparkUI(sparkContext), "sqlserver") with Logging {
 
-  override val name = "Hive Thrift Server"
+  override val name = "JDBC/ODBC Server"
 
   val parent = getSparkUI(sparkContext)
   val listener = HiveThriftServer2.listener

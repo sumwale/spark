@@ -22,7 +22,6 @@ from pyspark.ml.wrapper import JavaParams
 from pyspark.ml.param import Param, Params, TypeConverters
 from pyspark.ml.param.shared import HasLabelCol, HasPredictionCol, HasRawPredictionCol
 from pyspark.ml.common import inherit_doc
-from pyspark.ml.util import JavaMLReadable, JavaMLWritable
 
 __all__ = ['Evaluator', 'BinaryClassificationEvaluator', 'RegressionEvaluator',
            'MulticlassClassificationEvaluator']
@@ -104,8 +103,7 @@ class JavaEvaluator(JavaParams, Evaluator):
 
 
 @inherit_doc
-class BinaryClassificationEvaluator(JavaEvaluator, HasLabelCol, HasRawPredictionCol,
-                                    JavaMLReadable, JavaMLWritable):
+class BinaryClassificationEvaluator(JavaEvaluator, HasLabelCol, HasRawPredictionCol):
     """
     .. note:: Experimental
 
@@ -123,11 +121,6 @@ class BinaryClassificationEvaluator(JavaEvaluator, HasLabelCol, HasRawPrediction
     0.70...
     >>> evaluator.evaluate(dataset, {evaluator.metricName: "areaUnderPR"})
     0.83...
-    >>> bce_path = temp_path + "/bce"
-    >>> evaluator.save(bce_path)
-    >>> evaluator2 = BinaryClassificationEvaluator.load(bce_path)
-    >>> str(evaluator2.getRawPredictionCol())
-    'raw'
 
     .. versionadded:: 1.4.0
     """
@@ -148,7 +141,7 @@ class BinaryClassificationEvaluator(JavaEvaluator, HasLabelCol, HasRawPrediction
             "org.apache.spark.ml.evaluation.BinaryClassificationEvaluator", self.uid)
         self._setDefault(rawPredictionCol="rawPrediction", labelCol="label",
                          metricName="areaUnderROC")
-        kwargs = self._input_kwargs
+        kwargs = self.__init__._input_kwargs
         self._set(**kwargs)
 
     @since("1.4.0")
@@ -174,13 +167,12 @@ class BinaryClassificationEvaluator(JavaEvaluator, HasLabelCol, HasRawPrediction
                   metricName="areaUnderROC")
         Sets params for binary classification evaluator.
         """
-        kwargs = self._input_kwargs
+        kwargs = self.setParams._input_kwargs
         return self._set(**kwargs)
 
 
 @inherit_doc
-class RegressionEvaluator(JavaEvaluator, HasLabelCol, HasPredictionCol,
-                          JavaMLReadable, JavaMLWritable):
+class RegressionEvaluator(JavaEvaluator, HasLabelCol, HasPredictionCol):
     """
     .. note:: Experimental
 
@@ -198,11 +190,6 @@ class RegressionEvaluator(JavaEvaluator, HasLabelCol, HasPredictionCol,
     0.993...
     >>> evaluator.evaluate(dataset, {evaluator.metricName: "mae"})
     2.649...
-    >>> re_path = temp_path + "/re"
-    >>> evaluator.save(re_path)
-    >>> evaluator2 = RegressionEvaluator.load(re_path)
-    >>> str(evaluator2.getPredictionCol())
-    'raw'
 
     .. versionadded:: 1.4.0
     """
@@ -226,7 +213,7 @@ class RegressionEvaluator(JavaEvaluator, HasLabelCol, HasPredictionCol,
             "org.apache.spark.ml.evaluation.RegressionEvaluator", self.uid)
         self._setDefault(predictionCol="prediction", labelCol="label",
                          metricName="rmse")
-        kwargs = self._input_kwargs
+        kwargs = self.__init__._input_kwargs
         self._set(**kwargs)
 
     @since("1.4.0")
@@ -252,13 +239,12 @@ class RegressionEvaluator(JavaEvaluator, HasLabelCol, HasPredictionCol,
                   metricName="rmse")
         Sets params for regression evaluator.
         """
-        kwargs = self._input_kwargs
+        kwargs = self.setParams._input_kwargs
         return self._set(**kwargs)
 
 
 @inherit_doc
-class MulticlassClassificationEvaluator(JavaEvaluator, HasLabelCol, HasPredictionCol,
-                                        JavaMLReadable, JavaMLWritable):
+class MulticlassClassificationEvaluator(JavaEvaluator, HasLabelCol, HasPredictionCol):
     """
     .. note:: Experimental
 
@@ -274,11 +260,6 @@ class MulticlassClassificationEvaluator(JavaEvaluator, HasLabelCol, HasPredictio
     0.66...
     >>> evaluator.evaluate(dataset, {evaluator.metricName: "accuracy"})
     0.66...
-    >>> mce_path = temp_path + "/mce"
-    >>> evaluator.save(mce_path)
-    >>> evaluator2 = MulticlassClassificationEvaluator.load(mce_path)
-    >>> str(evaluator2.getPredictionCol())
-    'prediction'
 
     .. versionadded:: 1.5.0
     """
@@ -299,7 +280,7 @@ class MulticlassClassificationEvaluator(JavaEvaluator, HasLabelCol, HasPredictio
             "org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator", self.uid)
         self._setDefault(predictionCol="prediction", labelCol="label",
                          metricName="f1")
-        kwargs = self._input_kwargs
+        kwargs = self.__init__._input_kwargs
         self._set(**kwargs)
 
     @since("1.5.0")
@@ -325,32 +306,24 @@ class MulticlassClassificationEvaluator(JavaEvaluator, HasLabelCol, HasPredictio
                   metricName="f1")
         Sets params for multiclass classification evaluator.
         """
-        kwargs = self._input_kwargs
+        kwargs = self.setParams._input_kwargs
         return self._set(**kwargs)
 
 if __name__ == "__main__":
     import doctest
-    import tempfile
-    import pyspark.ml.evaluation
     from pyspark.sql import SparkSession
-    globs = pyspark.ml.evaluation.__dict__.copy()
+    globs = globals().copy()
     # The small batch size here ensures that we see multiple batches,
     # even in these small test examples:
     spark = SparkSession.builder\
         .master("local[2]")\
         .appName("ml.evaluation tests")\
         .getOrCreate()
+    sc = spark.sparkContext
+    globs['sc'] = sc
     globs['spark'] = spark
-    temp_path = tempfile.mkdtemp()
-    globs['temp_path'] = temp_path
-    try:
-        (failure_count, test_count) = doctest.testmod(globs=globs, optionflags=doctest.ELLIPSIS)
-        spark.stop()
-    finally:
-        from shutil import rmtree
-        try:
-            rmtree(temp_path)
-        except OSError:
-            pass
+    (failure_count, test_count) = doctest.testmod(
+        globs=globs, optionflags=doctest.ELLIPSIS)
+    spark.stop()
     if failure_count:
         exit(-1)

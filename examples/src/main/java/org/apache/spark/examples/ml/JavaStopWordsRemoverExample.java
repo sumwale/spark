@@ -57,7 +57,7 @@ public class JavaStopWordsRemoverExample {
     });
 
     Dataset<Row> dataset = spark.createDataFrame(data, schema);
-    remover.transform(dataset).show(false);
+    remover.transform(dataset).show();
     // $example off$
     spark.stop();
   }

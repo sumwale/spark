@@ -44,7 +44,7 @@ class LabeledPoint(object):
       Vector of features for this point (NumPy array, list,
       pyspark.mllib.linalg.SparseVector, or scipy.sparse column matrix).
 
-    .. note:: 'label' and 'features' are accessible as class attributes.
+    Note: 'label' and 'features' are accessible as class attributes.
 
     .. versionadded:: 1.0.0
     """

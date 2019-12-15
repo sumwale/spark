@@ -55,7 +55,7 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
    */
   def resolveOperators(rule: PartialFunction[LogicalPlan, LogicalPlan]): LogicalPlan = {
     if (!analyzed) {
-      val afterRuleOnChildren = mapChildren(_.resolveOperators(rule))
+      val afterRuleOnChildren = transformChildren(rule, (t, r) => t.resolveOperators(r))
       if (this fastEquals afterRuleOnChildren) {
         CurrentOrigin.withOrigin(origin) {
           rule.applyOrElse(this, identity[LogicalPlan])
@@ -276,7 +276,7 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
  * A logical plan node with no children.
  */
 abstract class LeafNode extends LogicalPlan {
-  override final def children: Seq[LogicalPlan] = Nil
+  override def children: Seq[LogicalPlan] = Nil
   override def producedAttributes: AttributeSet = outputSet
 }
 
@@ -286,26 +286,22 @@ abstract class LeafNode extends LogicalPlan {
 abstract class UnaryNode extends LogicalPlan {
   def child: LogicalPlan
 
-  override final def children: Seq[LogicalPlan] = child :: Nil
+  override def children: Seq[LogicalPlan] = child :: Nil
 
   /**
    * Generates an additional set of aliased constraints by replacing the original constraint
    * expressions with the corresponding alias
    */
   protected def getAliasedConstraints(projectList: Seq[NamedExpression]): Set[Expression] = {
-    var allConstraints = child.constraints.asInstanceOf[Set[Expression]]
-    projectList.foreach {
+    projectList.flatMap {
       case a @ Alias(e, _) =>
-        // For every alias in `projectList`, replace the reference in constraints by its attribute.
-        allConstraints ++= allConstraints.map(_ transform {
+        child.constraints.map(_ transform {
           case expr: Expression if expr.semanticEquals(e) =>
             a.toAttribute
-        })
-        allConstraints += EqualNullSafe(e, a.toAttribute)
-      case _ => // Don't change.
-    }
-
-    allConstraints -- child.constraints
+        }).union(Set(EqualNullSafe(e, a.toAttribute)))
+      case _ =>
+        Set.empty[Expression]
+    }.toSet
   }
 
   override protected def validConstraints: Set[Expression] = child.constraints
@@ -334,5 +330,5 @@ abstract class BinaryNode extends LogicalPlan {
   def left: LogicalPlan
   def right: LogicalPlan
 
-  override final def children: Seq[LogicalPlan] = Seq(left, right)
+  override def children: Seq[LogicalPlan] = Seq(left, right)
 }

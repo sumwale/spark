@@ -97,7 +97,7 @@ private[spark] class TaskContextImpl(
         listener.onTaskCompletion(this)
       } catch {
         case e: Throwable =>
-          errorMsgs += Utils.exceptionString(e)
+          errorMsgs += e.getMessage
           logError("Error in TaskCompletionListener", e)
       }
     }

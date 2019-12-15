@@ -66,9 +66,8 @@ if __name__ == "__main__":
 
     # Make predictions on test data. model is the model with combination of parameters
     # that performed best.
-    model.transform(test)\
-        .select("features", "label", "prediction")\
-        .show()
-
+    prediction = model.transform(test)
+    for row in prediction.take(5):
+        print(row)
     # $example off$
     spark.stop()

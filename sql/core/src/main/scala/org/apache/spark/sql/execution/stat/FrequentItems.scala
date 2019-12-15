@@ -24,7 +24,7 @@ import org.apache.spark.sql.{Column, DataFrame, Dataset, Row}
 import org.apache.spark.sql.catalyst.plans.logical.LocalRelation
 import org.apache.spark.sql.types._
 
-object FrequentItems extends Logging {
+private[sql] object FrequentItems extends Logging {
 
   /** A helper class wrapping `MutableMap[Any, Long]` for simplicity. */
   private class FreqItemCounter(size: Int) extends Serializable {
@@ -69,8 +69,7 @@ object FrequentItems extends Logging {
   /**
    * Finding frequent items for columns, possibly with false positives. Using the
    * frequent element count algorithm described in
-   * <a href="http://dx.doi.org/10.1145/762471.762473">here</a>, proposed by Karp, Schenker,
-   * and Papadimitriou.
+   * [[http://dx.doi.org/10.1145/762471.762473, proposed by Karp, Schenker, and Papadimitriou]].
    * The `support` should be greater than 1e-4.
    * For Internal use only.
    *
@@ -80,7 +79,7 @@ object FrequentItems extends Logging {
    *                than 1e-4.
    * @return A Local DataFrame with the Array of frequent items for each column.
    */
-  def singlePassFreqItems(
+  private[sql] def singlePassFreqItems(
       df: DataFrame,
       cols: Seq[String],
       support: Double): DataFrame = {

@@ -18,7 +18,7 @@
 #
 
 if [ -z "${SPARK_HOME}" ]; then
-  source "$(dirname "$0")"/find-spark-home
+  export SPARK_HOME="$(cd "`dirname "$0"`"/..; pwd)"
 fi
 
 source "${SPARK_HOME}"/bin/load-spark-env.sh

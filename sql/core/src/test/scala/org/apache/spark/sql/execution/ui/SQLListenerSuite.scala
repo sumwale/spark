@@ -19,12 +19,10 @@ package org.apache.spark.sql.execution.ui
 
 import java.util.Properties
 
-import org.json4s.jackson.JsonMethods._
 import org.mockito.Mockito.mock
 
 import org.apache.spark._
 import org.apache.spark.executor.TaskMetrics
-import org.apache.spark.internal.config
 import org.apache.spark.rdd.RDD
 import org.apache.spark.scheduler._
 import org.apache.spark.sql.{DataFrame, SparkSession}
@@ -36,10 +34,10 @@ import org.apache.spark.sql.execution.{LeafExecNode, QueryExecution, SparkPlanIn
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics}
 import org.apache.spark.sql.test.SharedSQLContext
 import org.apache.spark.ui.SparkUI
-import org.apache.spark.util.{AccumulatorMetadata, JsonProtocol, LongAccumulator}
+import org.apache.spark.util.{AccumulatorMetadata, LongAccumulator}
 
 
-class SQLListenerSuite extends SparkFunSuite with SharedSQLContext with JsonTestUtils {
+class SQLListenerSuite extends SparkFunSuite with SharedSQLContext {
   import testImplicits._
   import org.apache.spark.AccumulatorSuite.makeInfo
 
@@ -145,11 +143,6 @@ class SQLListenerSuite extends SparkFunSuite with SharedSQLContext with JsonTest
       (1L, 0, 0, createTaskMetrics(accumulatorUpdates).accumulators().map(makeInfo))
     )))
 
-    checkAnswer(listener.getExecutionMetrics(0), accumulatorUpdates.mapValues(_ * 2))
-
-    // Driver accumulator updates don't belong to this execution should be filtered and no
-    // exception will be thrown.
-    listener.onOtherEvent(SparkListenerDriverAccumUpdates(0, Seq((999L, 2L))))
     checkAnswer(listener.getExecutionMetrics(0), accumulatorUpdates.mapValues(_ * 2))
 
     listener.onExecutorMetricsUpdate(SparkListenerExecutorMetricsUpdate("", Seq(
@@ -422,45 +415,6 @@ class SQLListenerSuite extends SparkFunSuite with SharedSQLContext with JsonTest
     assert(driverUpdates(physicalPlan.longMetric("dummy").id) == expectedAccumValue)
   }
 
-  test("roundtripping SparkListenerDriverAccumUpdates through JsonProtocol (SPARK-18462)") {
-    val event = SparkListenerDriverAccumUpdates(1L, Seq((2L, 3L)))
-    val json = JsonProtocol.sparkEventToJson(event)
-    assertValidDataInJson(json,
-      parse("""
-        |{
-        |  "Event": "org.apache.spark.sql.execution.ui.SparkListenerDriverAccumUpdates",
-        |  "executionId": 1,
-        |  "accumUpdates": [[2,3]]
-        |}
-      """.stripMargin))
-    JsonProtocol.sparkEventFromJson(json) match {
-      case SparkListenerDriverAccumUpdates(executionId, accums) =>
-        assert(executionId == 1L)
-        accums.foreach { case (a, b) =>
-          assert(a == 2L)
-          assert(b == 3L)
-        }
-    }
-
-    // Test a case where the numbers in the JSON can only fit in longs:
-    val longJson = parse(
-      """
-        |{
-        |  "Event": "org.apache.spark.sql.execution.ui.SparkListenerDriverAccumUpdates",
-        |  "executionId": 4294967294,
-        |  "accumUpdates": [[4294967294,3]]
-        |}
-      """.stripMargin)
-    JsonProtocol.sparkEventFromJson(longJson) match {
-      case SparkListenerDriverAccumUpdates(executionId, accums) =>
-        assert(executionId == 4294967294L)
-        accums.foreach { case (a, b) =>
-          assert(a == 4294967294L)
-          assert(b == 3L)
-        }
-    }
-  }
-
 }
 
 
@@ -477,11 +431,9 @@ private case class MyPlan(sc: SparkContext, expectedValue: Long) extends LeafExe
 
   override def doExecute(): RDD[InternalRow] = {
     longMetric("dummy") += expectedValue
-
-    SQLMetrics.postDriverMetricUpdates(
-      sc,
-      sc.getLocalProperty(SQLExecution.EXECUTION_ID_KEY),
-      metrics.values.toSeq)
+    sc.listenerBus.post(SparkListenerDriverAccumUpdates(
+      sc.getLocalProperty(SQLExecution.EXECUTION_ID_KEY).toLong,
+      metrics.values.map(m => m.id -> m.value).toSeq))
     sc.emptyRDD
   }
 }
@@ -494,7 +446,7 @@ class SQLListenerMemoryLeakSuite extends SparkFunSuite {
       val conf = new SparkConf()
         .setMaster("local")
         .setAppName("test")
-        .set(config.MAX_TASK_FAILURES, 1) // Don't retry the tasks to run this test quickly
+        .set("spark.task.maxFailures", "1") // Don't retry the tasks to run this test quickly
         .set("spark.sql.ui.retainedExecutions", "50") // Set it to 50 to run this test quickly
       val sc = new SparkContext(conf)
       try {

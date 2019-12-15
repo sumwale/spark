@@ -31,15 +31,16 @@ if __name__ == "__main__":
 
     # $example on$
     df = spark.createDataFrame([
-        (Vectors.dense([2.0, 1.0]),),
+        (Vectors.dense([-2.0, 2.3]),),
         (Vectors.dense([0.0, 0.0]),),
-        (Vectors.dense([3.0, -1.0]),)
+        (Vectors.dense([0.6, -1.1]),)
     ], ["features"])
 
-    polyExpansion = PolynomialExpansion(degree=3, inputCol="features", outputCol="polyFeatures")
-    polyDF = polyExpansion.transform(df)
+    px = PolynomialExpansion(degree=3, inputCol="features", outputCol="polyFeatures")
+    polyDF = px.transform(df)
 
-    polyDF.show(truncate=False)
+    for expanded in polyDF.select("polyFeatures").take(3):
+        print(expanded)
     # $example off$
 
     spark.stop()

@@ -24,9 +24,8 @@ import scopt.OptionParser
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.ml.Pipeline
 import org.apache.spark.ml.feature.{CountVectorizer, CountVectorizerModel, RegexTokenizer, StopWordsRemover}
-import org.apache.spark.ml.linalg.{Vector => MLVector}
 import org.apache.spark.mllib.clustering.{DistributedLDAModel, EMLDAOptimizer, LDA, OnlineLDAOptimizer}
-import org.apache.spark.mllib.linalg.{Vector, Vectors}
+import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Row, SparkSession}
 
@@ -99,13 +98,15 @@ object LDAExample {
         .action((x, c) => c.copy(input = c.input :+ x))
     }
 
-    parser.parse(args, defaultParams) match {
-      case Some(params) => run(params)
-      case _ => sys.exit(1)
+    parser.parse(args, defaultParams).map { params =>
+      run(params)
+    }.getOrElse {
+      parser.showUsageAsError
+      sys.exit(1)
     }
   }
 
-  private def run(params: Params): Unit = {
+  private def run(params: Params) {
     val conf = new SparkConf().setAppName(s"LDAExample with $params")
     val sc = new SparkContext(conf)
 
@@ -224,7 +225,7 @@ object LDAExample {
     val documents = model.transform(df)
       .select("features")
       .rdd
-      .map { case Row(features: MLVector) => Vectors.fromML(features) }
+      .map { case Row(features: Vector) => features }
       .zipWithIndex()
       .map(_.swap)
 

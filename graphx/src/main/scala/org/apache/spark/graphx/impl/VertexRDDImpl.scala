@@ -63,9 +63,7 @@ class VertexRDDImpl[VD] private[graphx] (
     this
   }
 
-  /**
-   * Persists the vertex partitions at `targetStorageLevel`, which defaults to MEMORY_ONLY.
-   */
+  /** Persists the vertex partitions at `targetStorageLevel`, which defaults to MEMORY_ONLY. */
   override def cache(): this.type = {
     partitionsRDD.persist(targetStorageLevel)
     this

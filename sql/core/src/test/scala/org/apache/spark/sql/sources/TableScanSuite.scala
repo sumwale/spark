@@ -203,9 +203,6 @@ class TableScanSuite extends DataSourceTest with SharedSQLContext {
     (2 to 10).map(i => Row(i, i - 1)).toSeq)
 
   test("Schema and all fields") {
-    def hiveMetadata(dt: String): Metadata = {
-      new MetadataBuilder().putString(HIVE_TYPE_STRING, dt).build()
-    }
     val expectedSchema = StructType(
       StructField("string$%Field", StringType, true) ::
       StructField("binaryField", BinaryType, true) ::
@@ -220,8 +217,8 @@ class TableScanSuite extends DataSourceTest with SharedSQLContext {
       StructField("decimalField2", DecimalType(9, 2), true) ::
       StructField("dateField", DateType, true) ::
       StructField("timestampField", TimestampType, true) ::
-      StructField("varcharField", StringType, true, hiveMetadata("varchar(12)")) ::
-      StructField("charField", StringType, true, hiveMetadata("char(18)")) ::
+      StructField("varcharField", StringType, true) ::
+      StructField("charField", StringType, true) ::
       StructField("arrayFieldSimple", ArrayType(IntegerType), true) ::
       StructField("arrayFieldComplex",
         ArrayType(
@@ -244,7 +241,7 @@ class TableScanSuite extends DataSourceTest with SharedSQLContext {
       Nil
     )
 
-    assert(normalize(expectedSchema) == normalize(spark.table("tableWithSchema").schema))
+    assert(expectedSchema == spark.table("tableWithSchema").schema)
 
     checkAnswer(
       sql(
@@ -351,57 +348,37 @@ class TableScanSuite extends DataSourceTest with SharedSQLContext {
   test("exceptions") {
     // Make sure we do throw correct exception when users use a relation provider that
     // only implements the RelationProvider or the SchemaRelationProvider.
-    Seq("TEMPORARY VIEW", "TABLE").foreach { tableType =>
-      val schemaNotAllowed = intercept[Exception] {
-        sql(
-          s"""
-             |CREATE $tableType relationProvierWithSchema (i int)
-             |USING org.apache.spark.sql.sources.SimpleScanSource
-             |OPTIONS (
-             |  From '1',
-             |  To '10'
-             |)
-           """.stripMargin)
-      }
-      assert(schemaNotAllowed.getMessage.contains("does not allow user-specified schemas"))
-
-      val schemaNeeded = intercept[Exception] {
-        sql(
-          s"""
-             |CREATE $tableType schemaRelationProvierWithoutSchema
-             |USING org.apache.spark.sql.sources.AllDataTypesScanSource
-             |OPTIONS (
-             |  From '1',
-             |  To '10'
-             |)
-           """.stripMargin)
-      }
-      assert(schemaNeeded.getMessage.contains("A schema needs to be specified when using"))
+    val schemaNotAllowed = intercept[Exception] {
+      sql(
+        """
+          |CREATE TEMPORARY VIEW relationProvierWithSchema (i int)
+          |USING org.apache.spark.sql.sources.SimpleScanSource
+          |OPTIONS (
+          |  From '1',
+          |  To '10'
+          |)
+        """.stripMargin)
     }
-  }
+    assert(schemaNotAllowed.getMessage.contains("does not allow user-specified schemas"))
 
-  test("read the data source tables that do not extend SchemaRelationProvider") {
-    Seq("TEMPORARY VIEW", "TABLE").foreach { tableType =>
-      val tableName = "relationProvierWithSchema"
-      withTable (tableName) {
-        sql(
-          s"""
-             |CREATE $tableType $tableName
-             |USING org.apache.spark.sql.sources.SimpleScanSource
-             |OPTIONS (
-             |  From '1',
-             |  To '10'
-             |)
-           """.stripMargin)
-        checkAnswer(spark.table(tableName), spark.range(1, 11).toDF())
-      }
+    val schemaNeeded = intercept[Exception] {
+      sql(
+        """
+          |CREATE TEMPORARY VIEW schemaRelationProvierWithoutSchema
+          |USING org.apache.spark.sql.sources.AllDataTypesScanSource
+          |OPTIONS (
+          |  From '1',
+          |  To '10'
+          |)
+        """.stripMargin)
     }
+    assert(schemaNeeded.getMessage.contains("A schema needs to be specified when using"))
   }
 
   test("SPARK-5196 schema field with comment") {
     sql(
       """
-       |CREATE TEMPORARY VIEW student(name string comment 'SN', age int comment 'SA', grade int)
+       |CREATE TEMPORARY VIEW student(name string comment "SN", age int comment "SA", grade int)
        |USING org.apache.spark.sql.sources.AllDataTypesScanSource
        |OPTIONS (
        |  from '1',

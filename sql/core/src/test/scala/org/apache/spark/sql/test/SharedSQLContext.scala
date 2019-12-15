@@ -17,32 +17,27 @@
 
 package org.apache.spark.sql.test
 
-import scala.concurrent.duration._
-
-import org.scalatest.BeforeAndAfterEach
-import org.scalatest.concurrent.Eventually
-
-import org.apache.spark.{DebugFilesystem, SparkConf}
+import org.apache.spark.SparkConf
 import org.apache.spark.sql.{SparkSession, SQLContext}
 
 
 /**
- * Helper trait for SQL test suites where all tests share a single [[SparkSession]].
+ * Helper trait for SQL test suites where all tests share a single [[TestSparkSession]].
  */
-trait SharedSQLContext extends SQLTestUtils with BeforeAndAfterEach with Eventually {
+trait SharedSQLContext extends SQLTestUtils {
 
   protected val sparkConf = new SparkConf()
 
   /**
-   * The [[SparkSession]] to use for all tests in this suite.
+   * The [[TestSparkSession]] to use for all tests in this suite.
    *
    * By default, the underlying [[org.apache.spark.SparkContext]] will be run in local
    * mode with the default test configurations.
    */
-  private var _spark: SparkSession = null
+  private var _spark: TestSparkSession = null
 
   /**
-   * The [[SparkSession]] to use for all tests in this suite.
+   * The [[TestSparkSession]] to use for all tests in this suite.
    */
   protected implicit def spark: SparkSession = _spark
 
@@ -51,18 +46,13 @@ trait SharedSQLContext extends SQLTestUtils with BeforeAndAfterEach with Eventua
    */
   protected implicit def sqlContext: SQLContext = _spark.sqlContext
 
-  protected def createSparkSession: SparkSession = {
-    new TestSparkSession(
-      sparkConf.set("spark.hadoop.fs.file.impl", classOf[DebugFilesystem].getName))
-  }
-
   /**
-   * Initialize the [[SparkSession]].
+   * Initialize the [[TestSparkSession]].
    */
   protected override def beforeAll(): Unit = {
     SparkSession.sqlListener.set(null)
     if (_spark == null) {
-      _spark = createSparkSession
+      _spark = new TestSparkSession(sparkConf)
     }
     // Ensure we have initialized the context before calling parent code
     super.beforeAll()
@@ -79,20 +69,6 @@ trait SharedSQLContext extends SQLTestUtils with BeforeAndAfterEach with Eventua
       }
     } finally {
       super.afterAll()
-    }
-  }
-
-  protected override def beforeEach(): Unit = {
-    super.beforeEach()
-    DebugFilesystem.clearOpenStreams()
-  }
-
-  protected override def afterEach(): Unit = {
-    super.afterEach()
-    // files can be closed from other threads, so wait a bit
-    // normally this doesn't take more than 1s
-    eventually(timeout(10.seconds)) {
-      DebugFilesystem.assertNoOpenStreams()
     }
   }
 }

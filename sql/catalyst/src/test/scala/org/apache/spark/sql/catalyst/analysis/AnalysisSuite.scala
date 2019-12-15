@@ -17,18 +17,15 @@
 
 package org.apache.spark.sql.catalyst.analysis
 
-import org.scalatest.ShouldMatchers
-
-import org.apache.spark.sql.catalyst.{SimpleCatalystConf, TableIdentifier}
+import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.dsl.expressions._
 import org.apache.spark.sql.catalyst.dsl.plans._
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.plans.{Cross, Inner}
+import org.apache.spark.sql.catalyst.plans.Inner
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.types._
 
-
-class AnalysisSuite extends AnalysisTest with ShouldMatchers {
+class AnalysisSuite extends AnalysisTest {
   import org.apache.spark.sql.catalyst.analysis.TestRelations._
 
   test("union project *") {
@@ -221,36 +218,9 @@ class AnalysisSuite extends AnalysisTest with ShouldMatchers {
 
     // CreateStruct is a special case that we should not trim Alias for it.
     plan = testRelation.select(CreateStruct(Seq(a, (a + 1).as("a+1"))).as("col"))
-    expected = testRelation.select(CreateNamedStruct(Seq(
-      Literal(a.name), a,
-      Literal("a+1"), (a + 1))).as("col"))
-    checkAnalysis(plan, expected)
-  }
-
-  test("Analysis may leave unnecassary aliases") {
-    val att1 = testRelation.output.head
-    var plan = testRelation.select(
-      CreateStruct(Seq(att1, ((att1.as("aa")) + 1).as("a_plus_1"))).as("col"),
-      att1
-    )
-    val prevPlan = getAnalyzer(true).execute(plan)
-    plan = prevPlan.select(CreateArray(Seq(
-      CreateStruct(Seq(att1, (att1 + 1).as("a_plus_1"))).as("col1"),
-      /** alias should be eliminated by [[CleanupAliases]] */
-      "col".attr.as("col2")
-    )).as("arr"))
-    plan = getAnalyzer(true).execute(plan)
-
-    val expectedPlan = prevPlan.select(
-      CreateArray(Seq(
-        CreateNamedStruct(Seq(
-          Literal(att1.name), att1,
-          Literal("a_plus_1"), (att1 + 1))),
-          'col.struct(prevPlan.output(0).dataType.asInstanceOf[StructType]).notNull
-      )).as("arr")
-    )
-
-    checkAnalysis(plan, expectedPlan)
+    checkAnalysis(plan, plan)
+    plan = testRelation.select(CreateStructUnsafe(Seq(a, (a + 1).as("a+1"))).as("col"))
+    checkAnalysis(plan, plan)
   }
 
   test("SPARK-10534: resolve attribute references in order by clause") {
@@ -369,9 +339,9 @@ class AnalysisSuite extends AnalysisTest with ShouldMatchers {
     val query =
       Project(Seq($"x.key", $"y.key"),
         Join(
-          Project(Seq($"x.key"), SubqueryAlias("x", input, None)),
-          Project(Seq($"y.key"), SubqueryAlias("y", input, None)),
-          Cross, None))
+          Project(Seq($"x.key"), SubqueryAlias("x", input)),
+          Project(Seq($"y.key"), SubqueryAlias("y", input)),
+          Inner, None))
 
     assertAnalysisSuccess(query)
   }
@@ -406,24 +376,5 @@ class AnalysisSuite extends AnalysisTest with ShouldMatchers {
     assertExpressionType(sum(Divide(Decimal(1), 2)), DecimalType(31, 11))
     assertExpressionType(sum(Divide(Decimal(1), 2.0)), DoubleType)
     assertExpressionType(sum(Divide(1.0, Decimal(2.0))), DoubleType)
-  }
-
-  test("SPARK-18058: union and set operations shall not care about the nullability" +
-    " when comparing column types") {
-    val firstTable = LocalRelation(
-      AttributeReference("a",
-        StructType(Seq(StructField("a", IntegerType, nullable = true))), nullable = false)())
-    val secondTable = LocalRelation(
-      AttributeReference("a",
-        StructType(Seq(StructField("a", IntegerType, nullable = false))), nullable = false)())
-
-    val unionPlan = Union(firstTable, secondTable)
-    assertAnalysisSuccess(unionPlan)
-
-    val r1 = Except(firstTable, secondTable)
-    val r2 = Intersect(firstTable, secondTable)
-
-    assertAnalysisSuccess(r1)
-    assertAnalysisSuccess(r2)
   }
 }

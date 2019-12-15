@@ -49,6 +49,9 @@ class PrimitiveKeyOpenHashMapSuite extends SparkFunSuite with Matchers {
     intercept[IllegalArgumentException] {
       new PrimitiveKeyOpenHashMap[Int, Int](-1)
     }
+    intercept[IllegalArgumentException] {
+      new PrimitiveKeyOpenHashMap[Int, Int](0)
+    }
   }
 
   test("basic operations") {

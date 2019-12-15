@@ -104,8 +104,6 @@ private case class Subscribe[K, V](
       toSeek.asScala.foreach { case (topicPartition, offset) =>
           consumer.seek(topicPartition, offset)
       }
-      // we've called poll, we must pause or next poll may consume messages and set position
-      consumer.pause(consumer.assignment())
     }
 
     consumer
@@ -156,8 +154,6 @@ private case class SubscribePattern[K, V](
       toSeek.asScala.foreach { case (topicPartition, offset) =>
           consumer.seek(topicPartition, offset)
       }
-      // we've called poll, we must pause or next poll may consume messages and set position
-      consumer.pause(consumer.assignment())
     }
 
     consumer

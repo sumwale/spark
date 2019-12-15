@@ -23,7 +23,6 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.columnar.{ColumnBuilder, NativeColumnBuilder}
 import org.apache.spark.sql.types.AtomicType
-import org.apache.spark.unsafe.Platform
 
 /**
  * A stackable trait that builds optionally compressed byte buffer for a column.  Memory layout of
@@ -62,16 +61,16 @@ private[columnar] trait CompressibleColumnBuilder[T <: AtomicType]
     super.initialize(initialSize, columnName, useCompression)
   }
 
-  // The various compression schemes, while saving memory use, cause all of the data within
-  // the row to become unaligned, thus causing crashes.  Until a way of fixing the compression
-  // is found to also allow aligned accesses this must be disabled for SPARC.
-
   protected def isWorthCompressing(encoder: Encoder[T]) = {
-    CompressibleColumnBuilder.unaligned && encoder.compressionRatio < 0.8
+    encoder.compressionRatio < 0.8
   }
 
   private def gatherCompressibilityStats(row: InternalRow, ordinal: Int): Unit = {
-    compressionEncoders.foreach(_.gatherCompressibilityStats(row, ordinal))
+    var i = 0
+    while (i < compressionEncoders.length) {
+      compressionEncoders(i).gatherCompressibilityStats(row, ordinal)
+      i += 1
+    }
   }
 
   abstract override def appendFrom(row: InternalRow, ordinal: Int): Unit = {
@@ -107,8 +106,4 @@ private[columnar] trait CompressibleColumnBuilder[T <: AtomicType]
     logDebug(s"Compressor for [$columnName]: $encoder, ratio: ${encoder.compressionRatio}")
     encoder.compress(nonNullBuffer, compressedBuffer)
   }
-}
-
-private[columnar] object CompressibleColumnBuilder {
-  val unaligned = Platform.unaligned()
 }

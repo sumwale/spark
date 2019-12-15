@@ -126,13 +126,13 @@ private[python] class PythonMLLibAPI extends Serializable {
       k: Int,
       maxIterations: Int,
       minDivisibleClusterSize: Double,
-      seed: java.lang.Long): BisectingKMeansModel = {
-    val kmeans = new BisectingKMeans()
+      seed: Long): BisectingKMeansModel = {
+    new BisectingKMeans()
       .setK(k)
       .setMaxIterations(maxIterations)
       .setMinDivisibleClusterSize(minDivisibleClusterSize)
-    if (seed != null) kmeans.setSeed(seed)
-    kmeans.run(data)
+      .setSeed(seed)
+      .run(data)
   }
 
   /**
@@ -634,18 +634,8 @@ private[python] class PythonMLLibAPI extends Serializable {
    * Extra care needs to be taken in the Python code to ensure it gets freed on
    * exit; see the Py4J documentation.
    */
-  def fitChiSqSelector(
-      selectorType: String,
-      numTopFeatures: Int,
-      percentile: Double,
-      fpr: Double,
-      data: JavaRDD[LabeledPoint]): ChiSqSelectorModel = {
-    new ChiSqSelector()
-      .setSelectorType(selectorType)
-      .setNumTopFeatures(numTopFeatures)
-      .setPercentile(percentile)
-      .setFpr(fpr)
-      .fit(data.rdd)
+  def fitChiSqSelector(numTopFeatures: Int, data: JavaRDD[LabeledPoint]): ChiSqSelectorModel = {
+    new ChiSqSelector(numTopFeatures).fit(data.rdd)
   }
 
   /**
@@ -688,7 +678,7 @@ private[python] class PythonMLLibAPI extends Serializable {
       learningRate: Double,
       numPartitions: Int,
       numIterations: Int,
-      seed: java.lang.Long,
+      seed: Long,
       minCount: Int,
       windowSize: Int): Word2VecModelWrapper = {
     val word2vec = new Word2Vec()
@@ -696,9 +686,9 @@ private[python] class PythonMLLibAPI extends Serializable {
       .setLearningRate(learningRate)
       .setNumPartitions(numPartitions)
       .setNumIterations(numIterations)
+      .setSeed(seed)
       .setMinCount(minCount)
       .setWindowSize(windowSize)
-    if (seed != null) word2vec.setSeed(seed)
     try {
       val model = word2vec.fit(dataJRDD.rdd.persist(StorageLevel.MEMORY_AND_DISK_SER))
       new Word2VecModelWrapper(model)
@@ -761,7 +751,7 @@ private[python] class PythonMLLibAPI extends Serializable {
       impurityStr: String,
       maxDepth: Int,
       maxBins: Int,
-      seed: java.lang.Long): RandomForestModel = {
+      seed: Int): RandomForestModel = {
 
     val algo = Algo.fromString(algoStr)
     val impurity = Impurities.fromString(impurityStr)
@@ -773,13 +763,11 @@ private[python] class PythonMLLibAPI extends Serializable {
       maxBins = maxBins,
       categoricalFeaturesInfo = categoricalFeaturesInfo.asScala.toMap)
     val cached = data.rdd.persist(StorageLevel.MEMORY_AND_DISK)
-    // Only done because methods below want an int, not an optional Long
-    val intSeed = getSeedOrDefault(seed).toInt
     try {
       if (algo == Algo.Classification) {
-        RandomForest.trainClassifier(cached, strategy, numTrees, featureSubsetStrategy, intSeed)
+        RandomForest.trainClassifier(cached, strategy, numTrees, featureSubsetStrategy, seed)
       } else {
-        RandomForest.trainRegressor(cached, strategy, numTrees, featureSubsetStrategy, intSeed)
+        RandomForest.trainRegressor(cached, strategy, numTrees, featureSubsetStrategy, seed)
       }
     } finally {
       cached.unpersist(blocking = false)

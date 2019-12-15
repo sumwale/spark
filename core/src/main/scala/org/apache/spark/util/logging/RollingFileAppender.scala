@@ -17,11 +17,9 @@
 
 package org.apache.spark.util.logging
 
-import java.io._
-import java.util.zip.GZIPOutputStream
+import java.io.{File, FileFilter, InputStream}
 
 import com.google.common.io.Files
-import org.apache.commons.io.IOUtils
 
 import org.apache.spark.SparkConf
 
@@ -47,7 +45,6 @@ private[spark] class RollingFileAppender(
   import RollingFileAppender._
 
   private val maxRetainedFiles = conf.getInt(RETAINED_FILES_PROPERTY, -1)
-  private val enableCompression = conf.getBoolean(ENABLE_COMPRESSION, false)
 
   /** Stop the appender */
   override def stop() {
@@ -79,33 +76,6 @@ private[spark] class RollingFileAppender(
     }
   }
 
-  // Roll the log file and compress if enableCompression is true.
-  private def rotateFile(activeFile: File, rolloverFile: File): Unit = {
-    if (enableCompression) {
-      val gzFile = new File(rolloverFile.getAbsolutePath + GZIP_LOG_SUFFIX)
-      var gzOutputStream: GZIPOutputStream = null
-      var inputStream: InputStream = null
-      try {
-        inputStream = new FileInputStream(activeFile)
-        gzOutputStream = new GZIPOutputStream(new FileOutputStream(gzFile))
-        IOUtils.copy(inputStream, gzOutputStream)
-        inputStream.close()
-        gzOutputStream.close()
-        activeFile.delete()
-      } finally {
-        IOUtils.closeQuietly(inputStream)
-        IOUtils.closeQuietly(gzOutputStream)
-      }
-    } else {
-      Files.move(activeFile, rolloverFile)
-    }
-  }
-
-  // Check if the rollover file already exists.
-  private def rolloverFileExist(file: File): Boolean = {
-    file.exists || new File(file.getAbsolutePath + GZIP_LOG_SUFFIX).exists
-  }
-
   /** Move the active log file to a new rollover file */
   private def moveFile() {
     val rolloverSuffix = rollingPolicy.generateRolledOverFileSuffix()
@@ -113,8 +83,8 @@ private[spark] class RollingFileAppender(
       activeFile.getParentFile, activeFile.getName + rolloverSuffix).getAbsoluteFile
     logDebug(s"Attempting to rollover file $activeFile to file $rolloverFile")
     if (activeFile.exists) {
-      if (!rolloverFileExist(rolloverFile)) {
-        rotateFile(activeFile, rolloverFile)
+      if (!rolloverFile.exists) {
+        Files.move(activeFile, rolloverFile)
         logInfo(s"Rolled over $activeFile to $rolloverFile")
       } else {
         // In case the rollover file name clashes, make a unique file name.
@@ -127,11 +97,11 @@ private[spark] class RollingFileAppender(
           altRolloverFile = new File(activeFile.getParent,
             s"${activeFile.getName}$rolloverSuffix--$i").getAbsoluteFile
           i += 1
-        } while (i < 10000 && rolloverFileExist(altRolloverFile))
+        } while (i < 10000 && altRolloverFile.exists)
 
         logWarning(s"Rollover file $rolloverFile already exists, " +
           s"rolled over $activeFile to file $altRolloverFile")
-        rotateFile(activeFile, altRolloverFile)
+        Files.move(activeFile, altRolloverFile)
       }
     } else {
       logWarning(s"File $activeFile does not exist")
@@ -172,9 +142,6 @@ private[spark] object RollingFileAppender {
   val SIZE_DEFAULT = (1024 * 1024).toString
   val RETAINED_FILES_PROPERTY = "spark.executor.logs.rolling.maxRetainedFiles"
   val DEFAULT_BUFFER_SIZE = 8192
-  val ENABLE_COMPRESSION = "spark.executor.logs.rolling.enableCompression"
-
-  val GZIP_LOG_SUFFIX = ".gz"
 
   /**
    * Get the sorted list of rolled over files. This assumes that the all the rolled
@@ -191,6 +158,6 @@ private[spark] object RollingFileAppender {
       val file = new File(directory, activeFileName).getAbsoluteFile
       if (file.exists) Some(file) else None
     }
-    rolledOverFiles.sortBy(_.getName.stripSuffix(GZIP_LOG_SUFFIX)) ++ activeFile
+    rolledOverFiles ++ activeFile
   }
 }

@@ -26,11 +26,9 @@ import javax.net.ssl._
 import com.google.common.hash.HashCodes
 import com.google.common.io.Files
 import org.apache.hadoop.io.Text
-import org.apache.hadoop.security.Credentials
 
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.internal.Logging
-import org.apache.spark.internal.config._
 import org.apache.spark.network.sasl.SecretKeyHolder
 import org.apache.spark.util.Utils
 
@@ -183,9 +181,7 @@ import org.apache.spark.util.Utils
  *  setting `spark.ssl.useNodeLocalConf` to `true`.
  */
 
-private[spark] class SecurityManager(
-    sparkConf: SparkConf,
-    val ioEncryptionKey: Option[Array[Byte]] = None)
+private[spark] class SecurityManager(sparkConf: SparkConf)
   extends Logging with SecretKeyHolder {
 
   import SecurityManager._
@@ -286,10 +282,7 @@ private[spark] class SecurityManager(
       }: TrustManager
     })
 
-    require(fileServerSSLOptions.protocol.isDefined,
-      "spark.ssl.protocol is required when enabling SSL connections.")
-
-    val sslContext = SSLContext.getInstance(fileServerSSLOptions.protocol.get)
+    val sslContext = SSLContext.getInstance(fileServerSSLOptions.protocol.getOrElse("Default"))
     sslContext.init(null, trustStoreManagers.getOrElse(credulousTrustStoreManagers), null)
 
     val hostVerifier = new HostnameVerifier {
@@ -414,8 +407,6 @@ private[spark] class SecurityManager(
     aclsOn = aclSetting
     logInfo("Changing acls enabled to: " + aclsOn)
   }
-
-  def getIOEncryptionKey(): Option[Array[Byte]] = ioEncryptionKey
 
   /**
    * Generates or looks up the secret key.
@@ -560,5 +551,4 @@ private[spark] object SecurityManager {
 
   // key used to store the spark secret in the Hadoop UGI
   val SECRET_LOOKUP_KEY = "sparkCookie"
-
 }

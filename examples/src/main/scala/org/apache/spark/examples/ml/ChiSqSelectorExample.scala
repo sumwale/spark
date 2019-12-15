@@ -48,11 +48,8 @@ object ChiSqSelectorExample {
       .setOutputCol("selectedFeatures")
 
     val result = selector.fit(df).transform(df)
-
-    println(s"ChiSqSelector output with top ${selector.getNumTopFeatures} features selected")
     result.show()
     // $example off$
-
     spark.stop()
   }
 }

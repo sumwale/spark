@@ -28,7 +28,6 @@ import org.json4s.JsonAST.{JNothing, JValue}
 
 import org.apache.spark.{SecurityManager, SparkConf, SSLOptions}
 import org.apache.spark.internal.Logging
-import org.apache.spark.internal.config._
 import org.apache.spark.ui.JettyUtils._
 import org.apache.spark.util.Utils
 
@@ -47,12 +46,12 @@ private[spark] abstract class WebUI(
     name: String = "")
   extends Logging {
 
-  protected var tabs = ArrayBuffer[WebUITab]()
+  protected val tabs = ArrayBuffer[WebUITab]()
   protected val handlers = ArrayBuffer[ServletContextHandler]()
   protected val pageToHandlers = new HashMap[WebUIPage, ArrayBuffer[ServletContextHandler]]
   protected var serverInfo: Option[ServerInfo] = None
-  protected val publicHostName = Option(conf.getenv("SPARK_PUBLIC_DNS")).getOrElse(
-    conf.get(DRIVER_HOST_ADDRESS))
+  protected val localHostName = Utils.localHostNameForURI()
+  protected val publicHostName = Option(conf.getenv("SPARK_PUBLIC_DNS")).getOrElse(localHostName)
   private val className = Utils.getFormattedClassName(this)
 
   def getBasePath: String = basePath
@@ -84,20 +83,30 @@ private[spark] abstract class WebUI(
       (request: HttpServletRequest) => page.renderJson(request), securityManager, conf, basePath)
     attachHandler(renderHandler)
     attachHandler(renderJsonHandler)
-    val handlers = pageToHandlers.getOrElseUpdate(page, ArrayBuffer[ServletContextHandler]())
-    handlers += renderHandler
+    pageToHandlers.getOrElseUpdate(page, ArrayBuffer[ServletContextHandler]())
+      .append(renderHandler)
   }
 
   /** Attach a handler to this UI. */
   def attachHandler(handler: ServletContextHandler) {
     handlers += handler
-    serverInfo.foreach(_.addHandler(handler))
+    serverInfo.foreach { info =>
+      info.rootHandler.addHandler(handler)
+      if (!handler.isStarted) {
+        handler.start()
+      }
+    }
   }
 
   /** Detach a handler from this UI. */
   def detachHandler(handler: ServletContextHandler) {
     handlers -= handler
-    serverInfo.foreach(_.removeHandler(handler))
+    serverInfo.foreach { info =>
+      info.rootHandler.removeHandler(handler)
+      if (handler.isStarted) {
+        handler.stop()
+      }
+    }
   }
 
   /**

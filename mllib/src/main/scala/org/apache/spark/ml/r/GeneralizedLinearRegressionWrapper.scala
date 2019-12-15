@@ -25,7 +25,6 @@ import org.json4s.jackson.JsonMethods._
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.ml.attribute.AttributeGroup
 import org.apache.spark.ml.feature.RFormula
-import org.apache.spark.ml.r.RWrapperUtils._
 import org.apache.spark.ml.regression._
 import org.apache.spark.ml.util._
 import org.apache.spark.sql._
@@ -69,11 +68,9 @@ private[r] object GeneralizedLinearRegressionWrapper
       family: String,
       link: String,
       tol: Double,
-      maxIter: Int,
-      weightCol: String,
-      regParam: Double): GeneralizedLinearRegressionWrapper = {
-    val rFormula = new RFormula().setFormula(formula)
-    checkDataColumns(rFormula, data)
+      maxIter: Int): GeneralizedLinearRegressionWrapper = {
+    val rFormula = new RFormula()
+      .setFormula(formula)
     val rFormulaModel = rFormula.fit(data)
     // get labels and feature names from output schema
     val schema = rFormulaModel.transform(data).schema
@@ -87,9 +84,6 @@ private[r] object GeneralizedLinearRegressionWrapper
       .setFitIntercept(rFormula.hasIntercept)
       .setTol(tol)
       .setMaxIter(maxIter)
-      .setWeightCol(weightCol)
-      .setRegParam(regParam)
-      .setFeaturesCol(rFormula.getFeaturesCol)
     val pipeline = new Pipeline()
       .setStages(Array(rFormulaModel, glr))
       .fit(data)
@@ -104,38 +98,30 @@ private[r] object GeneralizedLinearRegressionWrapper
       features
     }
 
-    val rCoefficients: Array[Double] = if (summary.isNormalSolver) {
-      val rCoefficientStandardErrors = if (glm.getFitIntercept) {
-        Array(summary.coefficientStandardErrors.last) ++
-          summary.coefficientStandardErrors.dropRight(1)
-      } else {
-        summary.coefficientStandardErrors
-      }
-
-      val rTValues = if (glm.getFitIntercept) {
-        Array(summary.tValues.last) ++ summary.tValues.dropRight(1)
-      } else {
-        summary.tValues
-      }
-
-      val rPValues = if (glm.getFitIntercept) {
-        Array(summary.pValues.last) ++ summary.pValues.dropRight(1)
-      } else {
-        summary.pValues
-      }
-
-      if (glm.getFitIntercept) {
-        Array(glm.intercept) ++ glm.coefficients.toArray ++
-          rCoefficientStandardErrors ++ rTValues ++ rPValues
-      } else {
-        glm.coefficients.toArray ++ rCoefficientStandardErrors ++ rTValues ++ rPValues
-      }
+    val rCoefficientStandardErrors = if (glm.getFitIntercept) {
+      Array(summary.coefficientStandardErrors.last) ++
+        summary.coefficientStandardErrors.dropRight(1)
     } else {
-      if (glm.getFitIntercept) {
-        Array(glm.intercept) ++ glm.coefficients.toArray
-      } else {
-        glm.coefficients.toArray
-      }
+      summary.coefficientStandardErrors
+    }
+
+    val rTValues = if (glm.getFitIntercept) {
+      Array(summary.tValues.last) ++ summary.tValues.dropRight(1)
+    } else {
+      summary.tValues
+    }
+
+    val rPValues = if (glm.getFitIntercept) {
+      Array(summary.pValues.last) ++ summary.pValues.dropRight(1)
+    } else {
+      summary.pValues
+    }
+
+    val rCoefficients: Array[Double] = if (glm.getFitIntercept) {
+      Array(glm.intercept) ++ glm.coefficients.toArray ++
+        rCoefficientStandardErrors ++ rTValues ++ rPValues
+    } else {
+      glm.coefficients.toArray ++ rCoefficientStandardErrors ++ rTValues ++ rPValues
     }
 
     val rDispersion: Double = summary.dispersion

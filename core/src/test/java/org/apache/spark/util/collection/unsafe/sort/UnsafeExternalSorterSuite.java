@@ -19,12 +19,14 @@ package org.apache.spark.util.collection.unsafe.sort;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.UUID;
 
 import scala.Tuple2;
 import scala.Tuple2$;
+import scala.runtime.AbstractFunction1;
 
 import org.junit.After;
 import org.junit.Before;
@@ -38,7 +40,6 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.TaskContext;
 import org.apache.spark.executor.ShuffleWriteMetrics;
 import org.apache.spark.executor.TaskMetrics;
-import org.apache.spark.internal.config.package$;
 import org.apache.spark.memory.TestMemoryManager;
 import org.apache.spark.memory.TaskMemoryManager;
 import org.apache.spark.serializer.JavaSerializer;
@@ -56,15 +57,13 @@ import static org.mockito.Mockito.*;
 
 public class UnsafeExternalSorterSuite {
 
-  private final SparkConf conf = new SparkConf();
-
   final LinkedList<File> spillFilesCreated = new LinkedList<>();
   final TestMemoryManager memoryManager =
-    new TestMemoryManager(conf.clone().set("spark.memory.offHeap.enabled", "false"));
+    new TestMemoryManager(new SparkConf().set("spark.memory.offHeap.enabled", "false"));
   final TaskMemoryManager taskMemoryManager = new TaskMemoryManager(memoryManager, 0);
   final SerializerManager serializerManager = new SerializerManager(
-    new JavaSerializer(conf),
-    conf.clone().set("spark.shuffle.spill.compress", "false"));
+    new JavaSerializer(new SparkConf()),
+    new SparkConf().set("spark.shuffle.spill.compress", "false"));
   // Use integer comparison for comparing prefixes (which are partition ids, in this case)
   final PrefixComparator prefixComparator = PrefixComparators.LONG;
   // Since the key fits within the 8-byte prefix, we don't need to do any record comparison, so
@@ -87,10 +86,14 @@ public class UnsafeExternalSorterSuite {
 
   protected boolean shouldUseRadixSort() { return false; }
 
-  private final long pageSizeBytes = conf.getSizeAsBytes("spark.buffer.pageSize", "4m");
+  private final long pageSizeBytes = new SparkConf().getSizeAsBytes("spark.buffer.pageSize", "4m");
 
-  private final int spillThreshold =
-    (int) conf.get(package$.MODULE$.SHUFFLE_SPILL_NUM_ELEMENTS_FORCE_SPILL_THRESHOLD());
+  private static final class CompressStream extends AbstractFunction1<OutputStream, OutputStream> {
+    @Override
+    public OutputStream apply(OutputStream stream) {
+      return stream;
+    }
+  }
 
   @Before
   public void setUp() {
@@ -123,9 +126,9 @@ public class UnsafeExternalSorterSuite {
 
         return new DiskBlockObjectWriter(
           (File) args[1],
-          serializerManager,
           (SerializerInstance) args[2],
           (Integer) args[3],
+          new CompressStream(),
           false,
           (ShuffleWriteMetrics) args[4],
           (BlockId) args[0]
@@ -173,7 +176,7 @@ public class UnsafeExternalSorterSuite {
       prefixComparator,
       /* initialSize */ 1024,
       pageSizeBytes,
-      spillThreshold,
+      UnsafeExternalSorter.DEFAULT_NUM_ELEMENTS_FOR_SPILL_THRESHOLD,
       shouldUseRadixSort());
   }
 
@@ -397,7 +400,7 @@ public class UnsafeExternalSorterSuite {
       null,
       /* initialSize */ 1024,
       pageSizeBytes,
-      spillThreshold,
+      UnsafeExternalSorter.DEFAULT_NUM_ELEMENTS_FOR_SPILL_THRESHOLD,
       shouldUseRadixSort());
     long[] record = new long[100];
     int recordSize = record.length * 8;
@@ -434,7 +437,7 @@ public class UnsafeExternalSorterSuite {
       prefixComparator,
       1024,
       pageSizeBytes,
-      spillThreshold,
+      UnsafeExternalSorter.DEFAULT_NUM_ELEMENTS_FOR_SPILL_THRESHOLD,
       shouldUseRadixSort());
 
     // Peak memory should be monotonically increasing. More specifically, every time
@@ -470,3 +473,4 @@ public class UnsafeExternalSorterSuite {
   }
 
 }
+

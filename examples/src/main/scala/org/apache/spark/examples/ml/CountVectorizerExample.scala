@@ -49,7 +49,7 @@ object CountVectorizerExample {
       .setInputCol("words")
       .setOutputCol("features")
 
-    cvModel.transform(df).show(false)
+    cvModel.transform(df).select("features").show()
     // $example off$
 
     spark.stop()

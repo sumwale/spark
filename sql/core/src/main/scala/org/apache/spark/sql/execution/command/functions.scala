@@ -103,34 +103,29 @@ case class DescribeFunctionCommand(
     functionName.funcName.toLowerCase match {
       case "<>" =>
         Row(s"Function: $functionName") ::
-          Row("Usage: expr1 <> expr2 - " +
-            "Returns true if `expr1` is not equal to `expr2`.") :: Nil
+          Row(s"Usage: a <> b - Returns TRUE if a is not equal to b") :: Nil
       case "!=" =>
         Row(s"Function: $functionName") ::
-          Row("Usage: expr1 != expr2 - " +
-            "Returns true if `expr1` is not equal to `expr2`.") :: Nil
+          Row(s"Usage: a != b - Returns TRUE if a is not equal to b") :: Nil
       case "between" =>
-        Row("Function: between") ::
-          Row("Usage: expr1 [NOT] BETWEEN expr2 AND expr3 - " +
-            "evaluate if `expr1` is [not] in between `expr2` and `expr3`.") :: Nil
+        Row(s"Function: between") ::
+          Row(s"Usage: a [NOT] BETWEEN b AND c - " +
+            s"evaluate if a is [not] in between b and c") :: Nil
       case "case" =>
-        Row("Function: case") ::
-          Row("Usage: CASE expr1 WHEN expr2 THEN expr3 " +
-            "[WHEN expr4 THEN expr5]* [ELSE expr6] END - " +
-            "When `expr1` = `expr2`, returns `expr3`; " +
-            "when `expr1` = `expr4`, return `expr5`; else return `expr6`.") :: Nil
+        Row(s"Function: case") ::
+          Row(s"Usage: CASE a WHEN b THEN c [WHEN d THEN e]* [ELSE f] END - " +
+            s"When a = b, returns c; when a = d, return e; else return f") :: Nil
       case _ =>
         try {
           val info = sparkSession.sessionState.catalog.lookupFunctionInfo(functionName)
-          val name = if (info.getDb != null) info.getDb + "." + info.getName else info.getName
           val result =
-            Row(s"Function: $name") ::
+            Row(s"Function: ${info.getName}") ::
               Row(s"Class: ${info.getClassName}") ::
               Row(s"Usage: ${replaceFunctionName(info.getUsage, info.getName)}") :: Nil
 
           if (isExtended) {
             result :+
-              Row(s"Extended Usage:${replaceFunctionName(info.getExtended, info.getName)}")
+              Row(s"Extended Usage:\n${replaceFunctionName(info.getExtended, info.getName)}")
           } else {
             result
           }

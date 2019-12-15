@@ -14,9 +14,7 @@ It also supports a rich set of higher-level tools including [Spark SQL](sql-prog
 
 Get Spark from the [downloads page](http://spark.apache.org/downloads.html) of the project website. This documentation is for Spark version {{site.SPARK_VERSION}}. Spark uses Hadoop's client libraries for HDFS and YARN. Downloads are pre-packaged for a handful of popular Hadoop versions.
 Users can also download a "Hadoop free" binary and run Spark with any Hadoop version
-[by augmenting Spark's classpath](hadoop-provided.html).
-Scala and Java users can include Spark in their projects using its maven cooridnates and in the future Python users can also install Spark from PyPI.
-
+[by augmenting Spark's classpath](hadoop-provided.html). 
 
 If you'd like to build Spark from 
 source, visit [Building Spark](building-spark.html).
@@ -29,10 +27,6 @@ or the `JAVA_HOME` environment variable pointing to a Java installation.
 Spark runs on Java 7+, Python 2.6+/3.4+ and R 3.1+. For the Scala API, Spark {{site.SPARK_VERSION}}
 uses Scala {{site.SCALA_BINARY_VERSION}}. You will need to use a compatible Scala version
 ({{site.SCALA_BINARY_VERSION}}.x).
-
-Note that support for Java 7 and Python 2.6 are deprecated as of Spark 2.0.0, and support for 
-Scala 2.10 and versions of Hadoop before 2.6 are deprecated as of Spark 2.1.0, and may be 
-removed in Spark 2.2.0.
 
 # Running the Examples and Shell
 
@@ -102,7 +96,6 @@ options for deployment:
 * [Spark Java API (Javadoc)](api/java/index.html)
 * [Spark Python API (Sphinx)](api/python/index.html)
 * [Spark R API (Roxygen2)](api/R/index.html)
-* [Spark SQL, Built-in Functions (MkDocs)](api/sql/index.html)
 
 **Deployment Guides:**
 
@@ -126,12 +119,13 @@ options for deployment:
 * Integration with other storage systems:
   * [OpenStack Swift](storage-openstack-swift.html)
 * [Building Spark](building-spark.html): build Spark using the Maven system
-* [Contributing to Spark](http://spark.apache.org/contributing.html)
-* [Third Party Projects](http://spark.apache.org/third-party-projects.html): related third party Spark projects
+* [Contributing to Spark](https://cwiki.apache.org/confluence/display/SPARK/Contributing+to+Spark)
+* [Supplemental Projects](https://cwiki.apache.org/confluence/display/SPARK/Supplemental+Spark+Projects): related third party Spark projects
 
 **External Resources:**
 
 * [Spark Homepage](http://spark.apache.org)
+* [Spark Wiki](https://cwiki.apache.org/confluence/display/SPARK)
 * [Spark Community](http://spark.apache.org/community.html) resources, including local meetups
 * [StackOverflow tag `apache-spark`](http://stackoverflow.com/questions/tagged/apache-spark)
 * [Mailing Lists](http://spark.apache.org/mailing-lists.html): ask questions about Spark here

@@ -21,14 +21,15 @@ import java.nio.charset.StandardCharsets
 import java.sql.Timestamp
 
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{AnalysisException, Row, SparkSession}
+import org.apache.spark.sql.{AnalysisException, Row, SparkSession, SQLContext}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.analysis.UnsupportedOperationChecker
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, ReturnAnswer}
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
-import org.apache.spark.sql.execution.command.{DescribeTableCommand, ExecutedCommandExec, ShowTablesCommand}
+import org.apache.spark.sql.execution.command.{DescribeTableCommand, ExecutedCommandExec}
 import org.apache.spark.sql.execution.exchange.{EnsureRequirements, ReuseExchange}
+import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.{BinaryType, DateType, DecimalType, TimestampType, _}
 import org.apache.spark.util.Utils
 
@@ -45,21 +46,16 @@ class QueryExecution(val sparkSession: SparkSession, val logical: LogicalPlan) {
   protected def planner = sparkSession.sessionState.planner
 
   def assertAnalyzed(): Unit = {
-    // Analyzer is invoked outside the try block to avoid calling it again from within the
-    // catch block below.
-    analyzed
-    try {
-      sparkSession.sessionState.analyzer.checkAnalysis(analyzed)
-    } catch {
+    try sparkSession.sessionState.analyzer.checkAnalysis(analyzed) catch {
       case e: AnalysisException =>
-        val ae = new AnalysisException(e.message, e.line, e.startPosition, Option(analyzed))
+        val ae = new AnalysisException(e.message, e.line, e.startPosition, Some(analyzed))
         ae.setStackTrace(e.getStackTrace)
         throw ae
     }
   }
 
   def assertSupported(): Unit = {
-    if (sparkSession.sessionState.conf.isUnsupportedOperationCheckEnabled) {
+    if (sparkSession.sessionState.conf.getConf(SQLConf.UNSUPPORTED_OPERATION_CHECK_ENABLED)) {
       UnsupportedOperationChecker.checkForBatch(analyzed)
     }
   }
@@ -105,11 +101,10 @@ class QueryExecution(val sparkSession: SparkSession, val logical: LogicalPlan) {
     PlanSubqueries(sparkSession),
     EnsureRequirements(sparkSession.sessionState.conf),
     CollapseCodegenStages(sparkSession.sessionState.conf),
-    ReuseExchange(sparkSession.sessionState.conf),
-    ReuseSubquery(sparkSession.sessionState.conf))
+    ReuseExchange(sparkSession.sessionState.conf))
 
   protected def stringOrError[A](f: => A): String =
-    try f.toString catch { case e: AnalysisException => e.toString }
+    try f.toString catch { case e: Throwable => e.toString }
 
 
   /**
@@ -129,9 +124,6 @@ class QueryExecution(val sparkSession: SparkSession, val logical: LogicalPlan) {
               .mkString("\t")
         }
       }
-    // SHOW TABLES in Hive only output table names, while ours outputs database, table name, isTemp.
-    case command: ExecutedCommandExec if command.cmd.isInstanceOf[ShowTablesCommand] =>
-      command.executeCollect().map(_.getString(1))
     case command: ExecutedCommandExec =>
       command.executeCollect().map(_.getString(0))
     case other =>

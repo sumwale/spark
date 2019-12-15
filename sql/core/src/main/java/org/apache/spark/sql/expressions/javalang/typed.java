@@ -18,7 +18,6 @@
 package org.apache.spark.sql.expressions.javalang;
 
 import org.apache.spark.annotation.Experimental;
-import org.apache.spark.annotation.InterfaceStability;
 import org.apache.spark.api.java.function.MapFunction;
 import org.apache.spark.sql.TypedColumn;
 import org.apache.spark.sql.execution.aggregate.TypedAverage;
@@ -35,7 +34,6 @@ import org.apache.spark.sql.execution.aggregate.TypedSumLong;
  * @since 2.0.0
  */
 @Experimental
-@InterfaceStability.Evolving
 public class typed {
   // Note: make sure to keep in sync with typed.scala
 

@@ -31,11 +31,6 @@ import org.apache.spark.sql.SparkSession
  *
  * This is an example implementation for learning how to use Spark. For more conventional use,
  * please refer to org.apache.spark.graphx.lib.PageRank
- *
- * Example Usage:
- * {{{
- * bin/run-example SparkPageRank data/mllib/pagerank_data.txt 10
- * }}}
  */
 object SparkPageRank {
 

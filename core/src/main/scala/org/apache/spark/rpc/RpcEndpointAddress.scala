@@ -36,7 +36,7 @@ private[spark] case class RpcEndpointAddress(val rpcAddress: RpcAddress, val nam
     this(RpcAddress(host, port), name)
   }
 
-  override def toString: String = if (rpcAddress != null) {
+  override val toString = if (rpcAddress != null) {
       s"spark://$name@${rpcAddress.host}:${rpcAddress.port}"
     } else {
       s"spark-client://$name"

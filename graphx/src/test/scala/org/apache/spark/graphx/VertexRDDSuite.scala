@@ -20,7 +20,6 @@ package org.apache.spark.graphx
 import org.apache.spark.{HashPartitioner, SparkContext, SparkFunSuite}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
-import org.apache.spark.util.Utils
 
 class VertexRDDSuite extends SparkFunSuite with LocalSparkContext {
 
@@ -198,29 +197,4 @@ class VertexRDDSuite extends SparkFunSuite with LocalSparkContext {
     }
   }
 
-  test("checkpoint") {
-    withSpark { sc =>
-      val n = 100
-      val verts = vertices(sc, n)
-      sc.setCheckpointDir(Utils.createTempDir().getCanonicalPath)
-      verts.checkpoint()
-
-      // VertexRDD not yet checkpointed
-      assert(!verts.isCheckpointed)
-      assert(!verts.isCheckpointedAndMaterialized)
-      assert(!verts.partitionsRDD.isCheckpointed)
-      assert(!verts.partitionsRDD.isCheckpointedAndMaterialized)
-
-      val data = verts.collect().toSeq // force checkpointing
-
-      // VertexRDD shows up as checkpointed, but internally it is not.
-      // Only internal partitionsRDD is checkpointed.
-      assert(verts.isCheckpointed)
-      assert(!verts.isCheckpointedAndMaterialized)
-      assert(verts.partitionsRDD.isCheckpointed)
-      assert(verts.partitionsRDD.isCheckpointedAndMaterialized)
-
-      assert(verts.collect().toSeq === data) // test checkpointed RDD
-    }
-  }
 }

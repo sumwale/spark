@@ -26,11 +26,11 @@ import org.apache.spark.sql.execution.metric.SQLMetrics
 /**
  * Physical plan node for scanning data from a local collection.
  */
-case class LocalTableScanExec(
+private[sql] case class LocalTableScanExec(
     output: Seq[Attribute],
     rows: Seq[InternalRow]) extends LeafExecNode {
 
-  override lazy val metrics = Map(
+  private[sql] override lazy val metrics = Map(
     "numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows"))
 
   private val unsafeRows: Array[InternalRow] = {
@@ -42,10 +42,7 @@ case class LocalTableScanExec(
     }
   }
 
-  private lazy val numParallelism: Int = math.min(math.max(unsafeRows.length, 1),
-    sqlContext.sparkContext.defaultParallelism)
-
-  private lazy val rdd = sqlContext.sparkContext.parallelize(unsafeRows, numParallelism)
+  private lazy val rdd = sqlContext.sparkContext.parallelize(unsafeRows)
 
   protected override def doExecute(): RDD[InternalRow] = {
     val numOutputRows = longMetric("numOutputRows")
@@ -64,13 +61,10 @@ case class LocalTableScanExec(
   }
 
   override def executeCollect(): Array[InternalRow] = {
-    longMetric("numOutputRows").add(unsafeRows.size)
     unsafeRows
   }
 
   override def executeTake(limit: Int): Array[InternalRow] = {
-    val taken = unsafeRows.take(limit)
-    longMetric("numOutputRows").add(taken.size)
-    taken
+    unsafeRows.take(limit)
   }
 }

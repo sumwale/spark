@@ -100,8 +100,6 @@ public class TransportClientFactorySuite {
             clients.add(client);
           } catch (IOException e) {
             failed.incrementAndGet();
-          } catch (InterruptedException e) {
-            throw new RuntimeException(e);
           }
         }
       };
@@ -145,7 +143,7 @@ public class TransportClientFactorySuite {
   }
 
   @Test
-  public void returnDifferentClientsForDifferentServers() throws IOException, InterruptedException {
+  public void returnDifferentClientsForDifferentServers() throws IOException {
     TransportClientFactory factory = context.createClientFactory();
     TransportClient c1 = factory.createClient(TestUtils.getLocalHost(), server1.getPort());
     TransportClient c2 = factory.createClient(TestUtils.getLocalHost(), server2.getPort());
@@ -174,7 +172,7 @@ public class TransportClientFactorySuite {
   }
 
   @Test
-  public void closeBlockClientsWithFactory() throws IOException, InterruptedException {
+  public void closeBlockClientsWithFactory() throws IOException {
     TransportClientFactory factory = context.createClientFactory();
     TransportClient c1 = factory.createClient(TestUtils.getLocalHost(), server1.getPort());
     TransportClient c2 = factory.createClient(TestUtils.getLocalHost(), server2.getPort());

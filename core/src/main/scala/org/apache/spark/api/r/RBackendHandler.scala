@@ -18,18 +18,16 @@
 package org.apache.spark.api.r
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, DataInputStream, DataOutputStream}
-import java.util.concurrent.TimeUnit
 
+import scala.collection.mutable.HashMap
 import scala.language.existentials
 
 import io.netty.channel.{ChannelHandlerContext, SimpleChannelInboundHandler}
 import io.netty.channel.ChannelHandler.Sharable
-import io.netty.handler.timeout.ReadTimeoutException
 
 import org.apache.spark.api.r.SerDe._
 import org.apache.spark.internal.Logging
-import org.apache.spark.SparkConf
-import org.apache.spark.util.{ThreadUtils, Utils}
+import org.apache.spark.util.Utils
 
 /**
  * Handler for RBackend
@@ -61,7 +59,7 @@ private[r] class RBackendHandler(server: RBackend)
           assert(numArgs == 1)
 
           writeInt(dos, 0)
-          writeObject(dos, args(0), server.jvmObjectTracker)
+          writeObject(dos, args(0))
         case "stopBackend" =>
           writeInt(dos, 0)
           writeType(dos, "void")
@@ -71,9 +69,9 @@ private[r] class RBackendHandler(server: RBackend)
             val t = readObjectType(dis)
             assert(t == 'c')
             val objToRemove = readString(dis)
-            server.jvmObjectTracker.remove(JVMObjectId(objToRemove))
+            JVMObjectTracker.remove(objToRemove)
             writeInt(dos, 0)
-            writeObject(dos, null, server.jvmObjectTracker)
+            writeObject(dos, null)
           } catch {
             case e: Exception =>
               logError(s"Removing $objId failed", e)
@@ -85,29 +83,7 @@ private[r] class RBackendHandler(server: RBackend)
           writeString(dos, s"Error: unknown method $methodName")
       }
     } else {
-      // To avoid timeouts when reading results in SparkR driver, we will be regularly sending
-      // heartbeat responses. We use special code +1 to signal the client that backend is
-      // alive and it should continue blocking for result.
-      val execService = ThreadUtils.newDaemonSingleThreadScheduledExecutor("SparkRKeepAliveThread")
-      val pingRunner = new Runnable {
-        override def run(): Unit = {
-          val pingBaos = new ByteArrayOutputStream()
-          val pingDaos = new DataOutputStream(pingBaos)
-          writeInt(pingDaos, +1)
-          ctx.write(pingBaos.toByteArray)
-        }
-      }
-      val conf = new SparkConf()
-      val heartBeatInterval = conf.getInt(
-        "spark.r.heartBeatInterval", SparkRDefaults.DEFAULT_HEARTBEAT_INTERVAL)
-      val backendConnectionTimeout = conf.getInt(
-        "spark.r.backendConnectionTimeout", SparkRDefaults.DEFAULT_CONNECTION_TIMEOUT)
-      val interval = Math.min(heartBeatInterval, backendConnectionTimeout - 1)
-
-      execService.scheduleAtFixedRate(pingRunner, interval, interval, TimeUnit.SECONDS)
       handleMethodCall(isStatic, objId, methodName, numArgs, dis, dos)
-      execService.shutdown()
-      execService.awaitTermination(1, TimeUnit.SECONDS)
     }
 
     val reply = bos.toByteArray
@@ -119,15 +95,9 @@ private[r] class RBackendHandler(server: RBackend)
   }
 
   override def exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable): Unit = {
-    cause match {
-      case timeout: ReadTimeoutException =>
-        // Do nothing. We don't want to timeout on read
-        logWarning("Ignoring read timeout in RBackendHandler")
-      case _ =>
-        // Close the connection when an exception is raised.
-        cause.printStackTrace()
-        ctx.close()
-    }
+    // Close the connection when an exception is raised.
+    cause.printStackTrace()
+    ctx.close()
   }
 
   def handleMethodCall(
@@ -142,8 +112,12 @@ private[r] class RBackendHandler(server: RBackend)
       val cls = if (isStatic) {
         Utils.classForName(objId)
       } else {
-        obj = server.jvmObjectTracker(JVMObjectId(objId))
-        obj.getClass
+        JVMObjectTracker.get(objId) match {
+          case None => throw new IllegalArgumentException("Object not found " + objId)
+          case Some(o) =>
+            obj = o
+            o.getClass
+        }
       }
 
       val args = readArgs(numArgs, dis)
@@ -168,7 +142,7 @@ private[r] class RBackendHandler(server: RBackend)
 
         // Write status bit
         writeInt(dos, 0)
-        writeObject(dos, ret.asInstanceOf[AnyRef], server.jvmObjectTracker)
+        writeObject(dos, ret.asInstanceOf[AnyRef])
       } else if (methodName == "<init>") {
         // methodName should be "<init>" for constructor
         val ctors = cls.getConstructors
@@ -188,13 +162,13 @@ private[r] class RBackendHandler(server: RBackend)
         val obj = ctors(index.get).newInstance(args : _*)
 
         writeInt(dos, 0)
-        writeObject(dos, obj.asInstanceOf[AnyRef], server.jvmObjectTracker)
+        writeObject(dos, obj.asInstanceOf[AnyRef])
       } else {
         throw new IllegalArgumentException("invalid method " + methodName + " for object " + objId)
       }
     } catch {
       case e: Exception =>
-        logError(s"$methodName on $objId failed", e)
+        logError(s"$methodName on $objId failed")
         writeInt(dos, -1)
         // Writing the error message of the cause for the exception. This will be returned
         // to user in the R process.
@@ -205,7 +179,7 @@ private[r] class RBackendHandler(server: RBackend)
   // Read a number of arguments from the data input stream
   def readArgs(numArgs: Int, dis: DataInputStream): Array[java.lang.Object] = {
     (0 until numArgs).map { _ =>
-      readObject(dis, server.jvmObjectTracker)
+      readObject(dis)
     }.toArray
   }
 
@@ -224,7 +198,7 @@ private[r] class RBackendHandler(server: RBackend)
       args: Array[Object]): Option[Int] = {
     val numArgs = args.length
 
-    for (index <- parameterTypesOfMethods.indices) {
+    for (index <- 0 until parameterTypesOfMethods.length) {
       val parameterTypes = parameterTypesOfMethods(index)
 
       if (parameterTypes.length == numArgs) {
@@ -266,7 +240,7 @@ private[r] class RBackendHandler(server: RBackend)
           // Convert args if needed
           val parameterTypes = parameterTypesOfMethods(index)
 
-          for (i <- 0 until numArgs) {
+          (0 until numArgs).map { i =>
             if (parameterTypes(i) == classOf[Seq[Any]] && args(i).getClass.isArray) {
               // Convert a Java array to scala Seq
               args(i) = args(i).asInstanceOf[Array[_]].toSeq
@@ -281,4 +255,37 @@ private[r] class RBackendHandler(server: RBackend)
   }
 }
 
+/**
+ * Helper singleton that tracks JVM objects returned to R.
+ * This is useful for referencing these objects in RPC calls.
+ */
+private[r] object JVMObjectTracker {
 
+  // TODO: This map should be thread-safe if we want to support multiple
+  // connections at the same time
+  private[this] val objMap = new HashMap[String, Object]
+
+  // TODO: We support only one connection now, so an integer is fine.
+  // Investigate using use atomic integer in the future.
+  private[this] var objCounter: Int = 0
+
+  def getObject(id: String): Object = {
+    objMap(id)
+  }
+
+  def get(id: String): Option[Object] = {
+    objMap.get(id)
+  }
+
+  def put(obj: Object): String = {
+    val objId = objCounter.toString
+    objCounter = objCounter + 1
+    objMap.put(objId, obj)
+    objId
+  }
+
+  def remove(id: String): Option[Object] = {
+    objMap.remove(id)
+  }
+
+}

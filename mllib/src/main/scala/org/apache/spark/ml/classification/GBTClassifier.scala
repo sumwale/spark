@@ -43,6 +43,7 @@ import org.apache.spark.sql.types.DoubleType
  * Gradient-Boosted Trees (GBTs) (http://en.wikipedia.org/wiki/Gradient_boosting)
  * learning algorithm for classification.
  * It supports binary labels, as well as both continuous and categorical features.
+ * Note: Multiclass labels are not currently supported.
  *
  * The implementation is based upon: J.H. Friedman. "Stochastic Gradient Boosting." 1999.
  *
@@ -53,8 +54,6 @@ import org.apache.spark.sql.types.DoubleType
  *    based on the loss function, whereas the original gradient boosting method does not.
  *  - We expect to implement TreeBoost in the future:
  *    [https://issues.apache.org/jira/browse/SPARK-4240]
- *
- * @note Multiclass labels are not currently supported.
  */
 @Since("1.4.0")
 class GBTClassifier @Since("1.4.0") (
@@ -69,47 +68,31 @@ class GBTClassifier @Since("1.4.0") (
 
   // Parameters from TreeClassifierParams:
 
-  /** @group setParam */
   @Since("1.4.0")
-  override def setMaxDepth(value: Int): this.type = set(maxDepth, value)
+  override def setMaxDepth(value: Int): this.type = super.setMaxDepth(value)
 
-  /** @group setParam */
   @Since("1.4.0")
-  override def setMaxBins(value: Int): this.type = set(maxBins, value)
+  override def setMaxBins(value: Int): this.type = super.setMaxBins(value)
 
-  /** @group setParam */
   @Since("1.4.0")
-  override def setMinInstancesPerNode(value: Int): this.type = set(minInstancesPerNode, value)
+  override def setMinInstancesPerNode(value: Int): this.type =
+    super.setMinInstancesPerNode(value)
 
-  /** @group setParam */
   @Since("1.4.0")
-  override def setMinInfoGain(value: Double): this.type = set(minInfoGain, value)
+  override def setMinInfoGain(value: Double): this.type = super.setMinInfoGain(value)
 
-  /** @group expertSetParam */
   @Since("1.4.0")
-  override def setMaxMemoryInMB(value: Int): this.type = set(maxMemoryInMB, value)
+  override def setMaxMemoryInMB(value: Int): this.type = super.setMaxMemoryInMB(value)
 
-  /** @group expertSetParam */
   @Since("1.4.0")
-  override def setCacheNodeIds(value: Boolean): this.type = set(cacheNodeIds, value)
+  override def setCacheNodeIds(value: Boolean): this.type = super.setCacheNodeIds(value)
 
-  /**
-   * Specifies how often to checkpoint the cached node IDs.
-   * E.g. 10 means that the cache will get checkpointed every 10 iterations.
-   * This is only used if cacheNodeIds is true and if the checkpoint directory is set in
-   * [[org.apache.spark.SparkContext]].
-   * Must be at least 1.
-   * (default = 10)
-   * @group setParam
-   */
   @Since("1.4.0")
-  override def setCheckpointInterval(value: Int): this.type = set(checkpointInterval, value)
+  override def setCheckpointInterval(value: Int): this.type = super.setCheckpointInterval(value)
 
   /**
    * The impurity setting is ignored for GBT models.
    * Individual trees are built using impurity "Variance."
-   *
-   * @group setParam
    */
   @Since("1.4.0")
   override def setImpurity(value: String): this.type = {
@@ -119,23 +102,19 @@ class GBTClassifier @Since("1.4.0") (
 
   // Parameters from TreeEnsembleParams:
 
-  /** @group setParam */
   @Since("1.4.0")
-  override def setSubsamplingRate(value: Double): this.type = set(subsamplingRate, value)
+  override def setSubsamplingRate(value: Double): this.type = super.setSubsamplingRate(value)
 
-  /** @group setParam */
   @Since("1.4.0")
-  override def setSeed(value: Long): this.type = set(seed, value)
+  override def setSeed(value: Long): this.type = super.setSeed(value)
 
   // Parameters from GBTParams:
 
-  /** @group setParam */
   @Since("1.4.0")
-  override def setMaxIter(value: Int): this.type = set(maxIter, value)
+  override def setMaxIter(value: Int): this.type = super.setMaxIter(value)
 
-  /** @group setParam */
   @Since("1.4.0")
-  override def setStepSize(value: Double): this.type = set(stepSize, value)
+  override def setStepSize(value: Double): this.type = super.setStepSize(value)
 
   // Parameters from GBTClassifierParams:
 
@@ -149,7 +128,7 @@ class GBTClassifier @Since("1.4.0") (
     // We copy and modify this from Classifier.extractLabeledPoints since GBT only supports
     // 2 classes now.  This lets us provide a more precise error message.
     val oldDataset: RDD[LabeledPoint] =
-      dataset.select(col($(labelCol)), col($(featuresCol))).rdd.map {
+      dataset.select(col($(labelCol)).cast(DoubleType), col($(featuresCol))).rdd.map {
         case Row(label: Double, features: Vector) =>
           require(label == 0 || label == 1, s"GBTClassifier was given" +
             s" dataset with invalid label $label.  Labels must be in {0,1}; note that" +
@@ -158,17 +137,9 @@ class GBTClassifier @Since("1.4.0") (
       }
     val numFeatures = oldDataset.first().features.size
     val boostingStrategy = super.getOldBoostingStrategy(categoricalFeatures, OldAlgo.Classification)
-
-    val instr = Instrumentation.create(this, oldDataset)
-    instr.logParams(params: _*)
-    instr.logNumFeatures(numFeatures)
-    instr.logNumClasses(2)
-
     val (baseLearners, learnerWeights) = GradientBoostedTrees.run(oldDataset, boostingStrategy,
       $(seed))
-    val m = new GBTClassificationModel(uid, baseLearners, learnerWeights, numFeatures)
-    instr.logSuccess(m)
-    m
+    new GBTClassificationModel(uid, baseLearners, learnerWeights, numFeatures)
   }
 
   @Since("1.4.1")
@@ -190,11 +161,10 @@ object GBTClassifier extends DefaultParamsReadable[GBTClassifier] {
  * Gradient-Boosted Trees (GBTs) (http://en.wikipedia.org/wiki/Gradient_boosting)
  * model for classification.
  * It supports binary labels, as well as both continuous and categorical features.
+ * Note: Multiclass labels are not currently supported.
  *
  * @param _trees  Decision trees in the ensemble.
  * @param _treeWeights  Weights for the decision trees in the ensemble.
- *
- * @note Multiclass labels are not currently supported.
  */
 @Since("1.6.0")
 class GBTClassificationModel private[ml](
@@ -222,12 +192,6 @@ class GBTClassificationModel private[ml](
 
   @Since("1.4.0")
   override def trees: Array[DecisionTreeRegressionModel] = _trees
-
-  /**
-   * Number of trees in ensemble
-   */
-  @Since("2.0.0")
-  val getNumTrees: Int = trees.length
 
   @Since("1.4.0")
   override def treeWeights: Array[Double] = _treeWeights

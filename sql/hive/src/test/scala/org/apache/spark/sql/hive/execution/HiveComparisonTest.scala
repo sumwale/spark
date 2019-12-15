@@ -96,13 +96,8 @@ abstract class HiveComparisonTest
       .map(name => new File(targetDir, s"$suiteName.$name"))
 
   /** The local directory with cached golden answer will be stored. */
-  protected var answerCache = new File("src" + File.separator + "test" +
+  protected val answerCache = new File("src" + File.separator + "test" +
     File.separator + "resources" + File.separator + "golden")
-  sys.props.get("spark.project.home") match {
-    case Some(h) => answerCache = new File(h, "sql" + File.separator + "hive" +
-      File.separator + answerCache.getPath)
-    case None =>
-  }
   if (!answerCache.exists) {
     answerCache.mkdir()
   }
@@ -172,7 +167,7 @@ abstract class HiveComparisonTest
       // and does not return it as a query answer.
       case _: SetCommand => Seq("0")
       case _: ExplainCommand => answer
-      case _: DescribeTableCommand | ShowColumnsCommand(_, _) =>
+      case _: DescribeTableCommand | ShowColumnsCommand(_) =>
         // Filter out non-deterministic lines and lines which do not have actual results but
         // can introduce problems because of the way Hive formats these lines.
         // Then, remove empty lines. Do not sort the results.

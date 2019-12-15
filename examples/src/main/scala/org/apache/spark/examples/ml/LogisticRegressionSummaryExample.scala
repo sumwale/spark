@@ -51,7 +51,6 @@ object LogisticRegressionSummaryExample {
 
     // Obtain the objective per iteration.
     val objectiveHistory = trainingSummary.objectiveHistory
-    println("objectiveHistory:")
     objectiveHistory.foreach(loss => println(loss))
 
     // Obtain the metrics useful to judge performance on test data.
@@ -62,7 +61,7 @@ object LogisticRegressionSummaryExample {
     // Obtain the receiver-operating characteristic as a dataframe and areaUnderROC.
     val roc = binarySummary.roc
     roc.show()
-    println(s"areaUnderROC: ${binarySummary.areaUnderROC}")
+    println(binarySummary.areaUnderROC)
 
     // Set the model threshold to maximize F-Measure
     val fMeasure = binarySummary.fMeasureByThreshold

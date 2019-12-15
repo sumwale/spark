@@ -20,17 +20,16 @@ package org.apache.spark.sql.types
 import scala.math.Ordering
 import scala.reflect.runtime.universe.typeTag
 
-import org.apache.spark.annotation.InterfaceStability
+import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.sql.catalyst.ScalaReflectionLock
 
 
 /**
+ * :: DeveloperApi ::
  * The data type representing `java.sql.Timestamp` values.
- * Please use the singleton `DataTypes.TimestampType`.
- *
- * @since 1.3.0
+ * Please use the singleton [[DataTypes.TimestampType]].
  */
-@InterfaceStability.Stable
+@DeveloperApi
 class TimestampType private() extends AtomicType {
   // The companion object and this class is separated so the companion object also subclasses
   // this type. Otherwise, the companion object would be of type "TimestampType$" in byte code.
@@ -49,8 +48,4 @@ class TimestampType private() extends AtomicType {
   private[spark] override def asNullable: TimestampType = this
 }
 
-/**
- * @since 1.3.0
- */
-@InterfaceStability.Stable
 case object TimestampType extends TimestampType

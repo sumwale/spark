@@ -156,11 +156,7 @@ private[deploy] class ExecutorRunner(
 
       // Add webUI log urls
       val baseUrl =
-        if (conf.getBoolean("spark.ui.reverseProxy", false)) {
-          s"/proxy/$workerId/logPage/?appId=$appId&executorId=$execId&logType="
-        } else {
-          s"http://$publicAddress:$webUiPort/logPage/?appId=$appId&executorId=$execId&logType="
-        }
+        s"http://$publicAddress:$webUiPort/logPage/?appId=$appId&executorId=$execId&logType="
       builder.environment.put("SPARK_LOG_URL_STDERR", s"${baseUrl}stderr")
       builder.environment.put("SPARK_LOG_URL_STDOUT", s"${baseUrl}stdout")
 

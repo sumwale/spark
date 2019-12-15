@@ -17,12 +17,8 @@
 
 package org.apache.spark.executor
 
-import com.esotericsoftware.kryo.{Kryo, KryoSerializable}
-import com.esotericsoftware.kryo.io.{Input, Output}
-
-import org.apache.spark.TaskContext
 import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.util.{DoubleAccumulator, LongAccumulator}
+import org.apache.spark.util.LongAccumulator
 
 
 /**
@@ -31,12 +27,12 @@ import org.apache.spark.util.{DoubleAccumulator, LongAccumulator}
  * Operations are not thread-safe.
  */
 @DeveloperApi
-class ShuffleReadMetrics private[spark] () extends Serializable with KryoSerializable {
+class ShuffleReadMetrics private[spark] () extends Serializable {
   private[executor] val _remoteBlocksFetched = new LongAccumulator
   private[executor] val _localBlocksFetched = new LongAccumulator
   private[executor] val _remoteBytesRead = new LongAccumulator
   private[executor] val _localBytesRead = new LongAccumulator
-  private[executor] val _fetchWaitTime = new DoubleAccumulator
+  private[executor] val _fetchWaitTime = new LongAccumulator
   private[executor] val _recordsRead = new LongAccumulator
 
   /**
@@ -64,7 +60,7 @@ class ShuffleReadMetrics private[spark] () extends Serializable with KryoSeriali
    * blocking on shuffle input data. For instance if block B is being fetched while the task is
    * still not finished processing block A, it is not considered to be blocking on block B.
    */
-  def fetchWaitTime: Long = math.round(_fetchWaitTime.sum)
+  def fetchWaitTime: Long = _fetchWaitTime.sum
 
   /**
    * Total number of records read from the shuffle by this task.
@@ -85,14 +81,14 @@ class ShuffleReadMetrics private[spark] () extends Serializable with KryoSeriali
   private[spark] def incLocalBlocksFetched(v: Long): Unit = _localBlocksFetched.add(v)
   private[spark] def incRemoteBytesRead(v: Long): Unit = _remoteBytesRead.add(v)
   private[spark] def incLocalBytesRead(v: Long): Unit = _localBytesRead.add(v)
-  private[spark] def incFetchWaitTime(v: Double): Unit = _fetchWaitTime.add(v)
+  private[spark] def incFetchWaitTime(v: Long): Unit = _fetchWaitTime.add(v)
   private[spark] def incRecordsRead(v: Long): Unit = _recordsRead.add(v)
 
   private[spark] def setRemoteBlocksFetched(v: Int): Unit = _remoteBlocksFetched.setValue(v)
   private[spark] def setLocalBlocksFetched(v: Int): Unit = _localBlocksFetched.setValue(v)
   private[spark] def setRemoteBytesRead(v: Long): Unit = _remoteBytesRead.setValue(v)
   private[spark] def setLocalBytesRead(v: Long): Unit = _localBytesRead.setValue(v)
-  private[spark] def setFetchWaitTime(v: Double): Unit = _fetchWaitTime.setValue(v)
+  private[spark] def setFetchWaitTime(v: Long): Unit = _fetchWaitTime.setValue(v)
   private[spark] def setRecordsRead(v: Long): Unit = _recordsRead.setValue(v)
 
   /**
@@ -115,28 +111,6 @@ class ShuffleReadMetrics private[spark] () extends Serializable with KryoSeriali
       _recordsRead.add(metric.recordsRead)
     }
   }
-
-  override def write(kryo: Kryo, output: Output): Unit = {
-    _remoteBlocksFetched.write(kryo, output)
-    _localBlocksFetched.write(kryo, output)
-    _remoteBytesRead.write(kryo, output)
-    _localBytesRead.write(kryo, output)
-    _fetchWaitTime.write(kryo, output)
-    _recordsRead.write(kryo, output)
-  }
-
-  override final def read(kryo: Kryo, input: Input): Unit = {
-    read(kryo, input, context = null)
-  }
-
-  def read(kryo: Kryo, input: Input, context: TaskContext): Unit = {
-    _remoteBlocksFetched.read(kryo, input, context)
-    _localBlocksFetched.read(kryo, input, context)
-    _remoteBytesRead.read(kryo, input, context)
-    _localBytesRead.read(kryo, input, context)
-    _fetchWaitTime.read(kryo, input, context)
-    _recordsRead.read(kryo, input, context)
-  }
 }
 
 /**
@@ -149,20 +123,20 @@ private[spark] class TempShuffleReadMetrics {
   private[this] var _localBlocksFetched = 0L
   private[this] var _remoteBytesRead = 0L
   private[this] var _localBytesRead = 0L
-  private[this] var _fetchWaitTime = 0.0
+  private[this] var _fetchWaitTime = 0L
   private[this] var _recordsRead = 0L
 
   def incRemoteBlocksFetched(v: Long): Unit = _remoteBlocksFetched += v
   def incLocalBlocksFetched(v: Long): Unit = _localBlocksFetched += v
   def incRemoteBytesRead(v: Long): Unit = _remoteBytesRead += v
   def incLocalBytesRead(v: Long): Unit = _localBytesRead += v
-  def incFetchWaitTime(v: Double): Unit = _fetchWaitTime += v
+  def incFetchWaitTime(v: Long): Unit = _fetchWaitTime += v
   def incRecordsRead(v: Long): Unit = _recordsRead += v
 
   def remoteBlocksFetched: Long = _remoteBlocksFetched
   def localBlocksFetched: Long = _localBlocksFetched
   def remoteBytesRead: Long = _remoteBytesRead
   def localBytesRead: Long = _localBytesRead
-  def fetchWaitTime: Double = _fetchWaitTime
+  def fetchWaitTime: Long = _fetchWaitTime
   def recordsRead: Long = _recordsRead
 }

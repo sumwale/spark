@@ -45,7 +45,7 @@ object DCTExample {
       .setInverse(false)
 
     val dctDf = dct.transform(df)
-    dctDf.select("featuresDCT").show(false)
+    dctDf.select("featuresDCT").show(3)
     // $example off$
 
     spark.stop()

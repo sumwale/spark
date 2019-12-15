@@ -337,8 +337,9 @@ abstract class HadoopFsRelationTest extends QueryTest with SQLTestUtils with Tes
   }
 
   test("saveAsTable()/load() - non-partitioned table - ErrorIfExists") {
-    withTable("t") {
-      sql("CREATE TABLE t(i INT) USING parquet")
+    Seq.empty[(Int, String)].toDF().createOrReplaceTempView("t")
+
+    withTempView("t") {
       intercept[AnalysisException] {
         testDF.write.format(dataSourceName).mode(SaveMode.ErrorIfExists).saveAsTable("t")
       }
@@ -346,8 +347,9 @@ abstract class HadoopFsRelationTest extends QueryTest with SQLTestUtils with Tes
   }
 
   test("saveAsTable()/load() - non-partitioned table - Ignore") {
-    withTable("t") {
-      sql("CREATE TABLE t(i INT) USING parquet")
+    Seq.empty[(Int, String)].toDF().createOrReplaceTempView("t")
+
+    withTempView("t") {
       testDF.write.format(dataSourceName).mode(SaveMode.Ignore).saveAsTable("t")
       assert(spark.table("t").collect().isEmpty)
     }
@@ -446,7 +448,7 @@ abstract class HadoopFsRelationTest extends QueryTest with SQLTestUtils with Tes
       .saveAsTable("t")
 
     // Using only a subset of all partition columns
-    intercept[AnalysisException] {
+    intercept[Throwable] {
       partitionedTestDF2.write
         .format(dataSourceName)
         .mode(SaveMode.Append)
@@ -860,8 +862,8 @@ abstract class HadoopFsRelationTest extends QueryTest with SQLTestUtils with Tes
           .load(path)
 
         val Some(fileScanRDD) = df2.queryExecution.executedPlan.collectFirst {
-          case scan: DataSourceScanExec if scan.inputRDDs().head.isInstanceOf[FileScanRDD] =>
-            scan.inputRDDs().head.asInstanceOf[FileScanRDD]
+          case scan: DataSourceScanExec if scan.rdd.isInstanceOf[FileScanRDD] =>
+            scan.rdd.asInstanceOf[FileScanRDD]
         }
 
         val partitions = fileScanRDD.partitions

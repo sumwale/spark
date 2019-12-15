@@ -41,7 +41,8 @@ private[feature] trait StandardScalerParams extends Params with HasInputCol with
 
   /**
    * Whether to center the data with mean before scaling.
-   * It will build a dense output, so take care when applying to sparse input.
+   * It will build a dense output, so this does not work on sparse input
+   * and will raise an exception.
    * Default: false
    * @group param
    */
@@ -79,8 +80,8 @@ private[feature] trait StandardScalerParams extends Params with HasInputCol with
  * statistics on the samples in the training set.
  *
  * The "unit std" is computed using the
- * <a href="https://en.wikipedia.org/wiki/Standard_deviation#Corrected_sample_standard_deviation">
- * corrected sample standard deviation</a>,
+ * [[https://en.wikipedia.org/wiki/Standard_deviation#Corrected_sample_standard_deviation
+ *   corrected sample standard deviation]],
  * which is computed as the square root of the unbiased sample variance.
  */
 @Since("1.2.0")

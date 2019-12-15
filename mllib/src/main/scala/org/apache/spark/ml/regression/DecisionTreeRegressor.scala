@@ -38,8 +38,8 @@ import org.apache.spark.sql.functions._
 
 
 /**
- * <a href="http://en.wikipedia.org/wiki/Decision_tree_learning">Decision tree</a>
- * learning algorithm for regression.
+ * [[http://en.wikipedia.org/wiki/Decision_tree_learning Decision tree]] learning algorithm
+ * for regression.
  * It supports both continuous and categorical features.
  */
 @Since("1.4.0")
@@ -51,52 +51,34 @@ class DecisionTreeRegressor @Since("1.4.0") (@Since("1.4.0") override val uid: S
   def this() = this(Identifiable.randomUID("dtr"))
 
   // Override parameter setters from parent trait for Java API compatibility.
-  /** @group setParam */
   @Since("1.4.0")
-  override def setMaxDepth(value: Int): this.type = set(maxDepth, value)
+  override def setMaxDepth(value: Int): this.type = super.setMaxDepth(value)
 
-  /** @group setParam */
   @Since("1.4.0")
-  override def setMaxBins(value: Int): this.type = set(maxBins, value)
+  override def setMaxBins(value: Int): this.type = super.setMaxBins(value)
 
-  /** @group setParam */
   @Since("1.4.0")
-  override def setMinInstancesPerNode(value: Int): this.type = set(minInstancesPerNode, value)
+  override def setMinInstancesPerNode(value: Int): this.type =
+    super.setMinInstancesPerNode(value)
 
-  /** @group setParam */
   @Since("1.4.0")
-  override def setMinInfoGain(value: Double): this.type = set(minInfoGain, value)
+  override def setMinInfoGain(value: Double): this.type = super.setMinInfoGain(value)
 
-  /** @group expertSetParam */
   @Since("1.4.0")
-  override def setMaxMemoryInMB(value: Int): this.type = set(maxMemoryInMB, value)
+  override def setMaxMemoryInMB(value: Int): this.type = super.setMaxMemoryInMB(value)
 
-  /** @group expertSetParam */
   @Since("1.4.0")
-  override def setCacheNodeIds(value: Boolean): this.type = set(cacheNodeIds, value)
+  override def setCacheNodeIds(value: Boolean): this.type = super.setCacheNodeIds(value)
 
-  /**
-   * Specifies how often to checkpoint the cached node IDs.
-   * E.g. 10 means that the cache will get checkpointed every 10 iterations.
-   * This is only used if cacheNodeIds is true and if the checkpoint directory is set in
-   * [[org.apache.spark.SparkContext]].
-   * Must be at least 1.
-   * (default = 10)
-   * @group setParam
-   */
   @Since("1.4.0")
-  override def setCheckpointInterval(value: Int): this.type = set(checkpointInterval, value)
+  override def setCheckpointInterval(value: Int): this.type = super.setCheckpointInterval(value)
+
+  @Since("1.4.0")
+  override def setImpurity(value: String): this.type = super.setImpurity(value)
+
+  override def setSeed(value: Long): this.type = super.setSeed(value)
 
   /** @group setParam */
-  @Since("1.4.0")
-  override def setImpurity(value: String): this.type = set(impurity, value)
-
-  /** @group setParam */
-  @Since("1.6.0")
-  override def setSeed(value: Long): this.type = set(seed, value)
-
-  /** @group setParam */
-  @Since("2.0.0")
   def setVarianceCol(value: String): this.type = set(varianceCol, value)
 
   override protected def train(dataset: Dataset[_]): DecisionTreeRegressionModel = {
@@ -150,8 +132,7 @@ object DecisionTreeRegressor extends DefaultParamsReadable[DecisionTreeRegressor
 }
 
 /**
- * <a href="http://en.wikipedia.org/wiki/Decision_tree_learning">
- * Decision tree (Wikipedia)</a> model for regression.
+ * [[http://en.wikipedia.org/wiki/Decision_tree_learning Decision tree]] model for regression.
  * It supports both continuous and categorical features.
  * @param rootNode  Root of the decision tree
  */
@@ -226,9 +207,9 @@ class DecisionTreeRegressionModel private[ml] (
    *     where gain is scaled by the number of instances passing through node
    *   - Normalize importances for tree to sum to 1.
    *
-   * @note Feature importance for single decision trees can have high variance due to
-   * correlated predictor variables. Consider using a [[RandomForestRegressor]]
-   * to determine feature importance instead.
+   * Note: Feature importance for single decision trees can have high variance due to
+   *       correlated predictor variables. Consider using a [[RandomForestRegressor]]
+   *       to determine feature importance instead.
    */
   @Since("2.0.0")
   lazy val featureImportances: Vector = TreeEnsembleModel.featureImportances(this, numFeatures)

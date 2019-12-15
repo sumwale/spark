@@ -51,6 +51,7 @@ object TypeCoercion {
       PromoteStrings ::
       DecimalPrecision ::
       BooleanEquality ::
+      StringToIntegralCasts ::
       FunctionArgumentConversion ::
       CaseWhenCoercion ::
       IfCoercion ::
@@ -62,7 +63,7 @@ object TypeCoercion {
 
   // See https://cwiki.apache.org/confluence/display/Hive/LanguageManual+Types.
   // The conversion for integral and floating point types have a linear widening hierarchy:
-  val numericPrecedence =
+  private[sql] val numericPrecedence =
     IndexedSeq(
       ByteType,
       ShortType,
@@ -95,9 +96,6 @@ object TypeCoercion {
       val index = numericPrecedence.lastIndexWhere(t => t == t1 || t == t2)
       Some(numericPrecedence(index))
 
-    case (_: TimestampType, _: DateType) | (_: DateType, _: TimestampType) =>
-      Some(TimestampType)
-
     case _ => None
   }
 
@@ -111,10 +109,22 @@ object TypeCoercion {
   }
 
   /**
+   * Similar to [[findTightestCommonType]], if can not find the TightestCommonType, try to use
+   * [[findTightestCommonTypeToString]] to find the TightestCommonType.
+   */
+  private def findTightestCommonTypeAndPromoteToString(types: Seq[DataType]): Option[DataType] = {
+    types.foldLeft[Option[DataType]](Some(NullType))((r, c) => r match {
+      case None => None
+      case Some(d) =>
+        findTightestCommonTypeToString(d, c)
+    })
+  }
+
+  /**
    * Find the tightest common type of a set of types by continuously applying
    * `findTightestCommonTypeOfTwo` on these types.
    */
-   def findTightestCommonType(types: Seq[DataType]): Option[DataType] = {
+  private def findTightestCommonType(types: Seq[DataType]): Option[DataType] = {
     types.foldLeft[Option[DataType]](Some(NullType))((r, c) => r match {
       case None => None
       case Some(d) => findTightestCommonTypeOfTwo(d, c)
@@ -143,28 +153,6 @@ object TypeCoercion {
   private def findWiderCommonType(types: Seq[DataType]) = {
     types.foldLeft[Option[DataType]](Some(NullType))((r, c) => r match {
       case Some(d) => findWiderTypeForTwo(d, c)
-      case None => None
-    })
-  }
-
-  /**
-   * Similar to [[findWiderCommonType]], but can't promote to string. This is also similar to
-   * [[findTightestCommonType]], but can handle decimal types. If the wider decimal type exceeds
-   * system limitation, this rule will truncate the decimal type before return it.
-   */
-  def findWiderTypeWithoutStringPromotion(types: Seq[DataType]): Option[DataType] = {
-    types.foldLeft[Option[DataType]](Some(NullType))((r, c) => r match {
-      case Some(d) => findTightestCommonTypeOfTwo(d, c).orElse((d, c) match {
-        case (t1: DecimalType, t2: DecimalType) =>
-          Some(DecimalPrecision.widerDecimalType(t1, t2))
-        case (t: IntegralType, d: DecimalType) =>
-          Some(DecimalPrecision.widerDecimalType(DecimalType.forType(t), d))
-        case (d: DecimalType, t: IntegralType) =>
-          Some(DecimalPrecision.widerDecimalType(DecimalType.forType(t), d))
-        case (_: FractionalType, _: DecimalType) | (_: DecimalType, _: FractionalType) =>
-          Some(DoubleType)
-        case _ => None
-      })
       case None => None
     })
   }
@@ -314,22 +302,23 @@ object TypeCoercion {
       case p @ Equality(left @ TimestampType(), right @ StringType()) =>
         p.makeCopy(Array(left, Cast(right, TimestampType)))
 
-      // Parsing of partial dates/timestamps has been added for SPARK-8995 hence
-      // converting strings to dates/timestamps.
+      // We should cast all relative timestamp/date/string comparison into string comparisons
+      // This behaves as a user would expect because timestamp strings sort lexicographically.
+      // i.e. TimeStamp(2013-01-01 00:00 ...) < "2014" = true
       case p @ BinaryComparison(left @ StringType(), right @ DateType()) =>
-        p.makeCopy(Array(Cast(left, DateType), right))
+        p.makeCopy(Array(left, Cast(right, StringType)))
       case p @ BinaryComparison(left @ DateType(), right @ StringType()) =>
-        p.makeCopy(Array(left, Cast(right, DateType)))
+        p.makeCopy(Array(Cast(left, StringType), right))
       case p @ BinaryComparison(left @ StringType(), right @ TimestampType()) =>
-        p.makeCopy(Array(Cast(left, TimestampType), right))
+        p.makeCopy(Array(left, Cast(right, StringType)))
       case p @ BinaryComparison(left @ TimestampType(), right @ StringType()) =>
-        p.makeCopy(Array(left, Cast(right, TimestampType)))
+        p.makeCopy(Array(Cast(left, StringType), right))
 
       // Comparisons between dates and timestamps.
       case p @ BinaryComparison(left @ TimestampType(), right @ DateType()) =>
-        p.makeCopy(Array(left, Cast(right, TimestampType)))
+        p.makeCopy(Array(Cast(left, StringType), Cast(right, StringType)))
       case p @ BinaryComparison(left @ DateType(), right @ TimestampType()) =>
-        p.makeCopy(Array(Cast(left, TimestampType), right))
+        p.makeCopy(Array(Cast(left, StringType), Cast(right, StringType)))
 
       // Checking NullType
       case p @ BinaryComparison(left @ StringType(), right @ NullType()) =>
@@ -343,13 +332,13 @@ object TypeCoercion {
         p.makeCopy(Array(left, Cast(right, DoubleType)))
 
       case i @ In(a @ DateType(), b) if b.forall(_.dataType == StringType) =>
-        i.makeCopy(Array(a, b.map(Cast(_, DateType))))
+        i.makeCopy(Array(Cast(a, StringType), b))
       case i @ In(a @ TimestampType(), b) if b.forall(_.dataType == StringType) =>
         i.makeCopy(Array(a, b.map(Cast(_, TimestampType))))
       case i @ In(a @ DateType(), b) if b.forall(_.dataType == TimestampType) =>
-        i.makeCopy(Array(Cast(a, TimestampType), b))
+        i.makeCopy(Array(Cast(a, StringType), b.map(Cast(_, StringType))))
       case i @ In(a @ TimestampType(), b) if b.forall(_.dataType == DateType) =>
-        i.makeCopy(Array(a, b.map(Cast(_, TimestampType))))
+        i.makeCopy(Array(Cast(a, StringType), b.map(Cast(_, StringType))))
 
       case Sum(e @ StringType()) => Sum(Cast(e, DoubleType))
       case Average(e @ StringType()) => Average(Cast(e, DoubleType))
@@ -427,6 +416,21 @@ object TypeCoercion {
   }
 
   /**
+   * When encountering a cast from a string representing a valid fractional number to an integral
+   * type the jvm will throw a `java.lang.NumberFormatException`.  Hive, in contrast, returns the
+   * truncated version of this number.
+   */
+  object StringToIntegralCasts extends Rule[LogicalPlan] {
+    def apply(plan: LogicalPlan): LogicalPlan = plan resolveExpressions {
+      // Skip nodes who's children have not been resolved yet.
+      case e if !e.childrenResolved => e
+
+      case Cast(e @ StringType(), t: IntegralType) =>
+        Cast(Cast(e, DecimalType.forType(LongType)), t)
+    }
+  }
+
+  /**
    * This ensure that the types for various functions are as expected.
    */
   object FunctionArgumentConversion extends Rule[LogicalPlan] {
@@ -436,7 +440,7 @@ object TypeCoercion {
 
       case a @ CreateArray(children) if !haveSameType(children) =>
         val types = children.map(_.dataType)
-        findWiderCommonType(types) match {
+        findTightestCommonTypeAndPromoteToString(types) match {
           case Some(finalDataType) => CreateArray(children.map(Cast(_, finalDataType)))
           case None => a
         }
@@ -447,7 +451,7 @@ object TypeCoercion {
           m.keys
         } else {
           val types = m.keys.map(_.dataType)
-          findWiderCommonType(types) match {
+          findTightestCommonTypeAndPromoteToString(types) match {
             case Some(finalDataType) => m.keys.map(Cast(_, finalDataType))
             case None => m.keys
           }
@@ -457,7 +461,7 @@ object TypeCoercion {
           m.values
         } else {
           val types = m.values.map(_.dataType)
-          findWiderCommonType(types) match {
+          findTightestCommonTypeAndPromoteToString(types) match {
             case Some(finalDataType) => m.values.map(Cast(_, finalDataType))
             case None => m.values
           }
@@ -490,19 +494,16 @@ object TypeCoercion {
           case None => c
         }
 
-      // When finding wider type for `Greatest` and `Least`, we should handle decimal types even if
-      // we need to truncate, but we should not promote one side to string if the other side is
-      // string.g
       case g @ Greatest(children) if !haveSameType(children) =>
         val types = children.map(_.dataType)
-        findWiderTypeWithoutStringPromotion(types) match {
+        findTightestCommonType(types) match {
           case Some(finalDataType) => Greatest(children.map(Cast(_, finalDataType)))
           case None => g
         }
 
       case l @ Least(children) if !haveSameType(children) =>
         val types = children.map(_.dataType)
-        findWiderTypeWithoutStringPromotion(types) match {
+        findTightestCommonType(types) match {
           case Some(finalDataType) => Least(children.map(Cast(_, finalDataType)))
           case None => l
         }
@@ -511,7 +512,8 @@ object TypeCoercion {
         NaNvl(l, Cast(r, DoubleType))
       case NaNvl(l, r) if l.dataType == FloatType && r.dataType == DoubleType =>
         NaNvl(Cast(l, DoubleType), r)
-      case NaNvl(l, r) if r.dataType == NullType => NaNvl(l, Cast(r, l.dataType))
+
+      case e: RuntimeReplaceable => e.replaceForTypeCoercion()
     }
   }
 
@@ -528,14 +530,11 @@ object TypeCoercion {
       // Decimal and Double remain the same
       case d: Divide if d.dataType == DoubleType => d
       case d: Divide if d.dataType.isInstanceOf[DecimalType] => d
-      case Divide(left, right) if isNumericOrNull(left) && isNumericOrNull(right) =>
+      case Divide(left, right) if isNumeric(left) && isNumeric(right) =>
         Divide(Cast(left, DoubleType), Cast(right, DoubleType))
     }
 
-    private def isNumericOrNull(ex: Expression): Boolean = {
-      // We need to handle null types in case a query contains null literals.
-      ex.dataType.isInstanceOf[NumericType] || ex.dataType == NullType
-    }
+    private def isNumeric(ex: Expression): Boolean = ex.dataType.isInstanceOf[NumericType]
   }
 
   /**

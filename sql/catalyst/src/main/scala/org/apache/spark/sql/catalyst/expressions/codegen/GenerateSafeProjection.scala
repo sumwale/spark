@@ -19,7 +19,6 @@ package org.apache.spark.sql.catalyst.expressions.codegen
 
 import scala.annotation.tailrec
 
-import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate.NoOp
 import org.apache.spark.sql.catalyst.util.{ArrayBasedMapData, GenericArrayData}
@@ -31,7 +30,7 @@ import org.apache.spark.sql.types._
 abstract class BaseProjection extends Projection {}
 
 /**
- * Generates byte code that produces a [[InternalRow]] object (not an [[UnsafeRow]]) that can update
+ * Generates byte code that produces a [[MutableRow]] object (not an [[UnsafeRow]]) that can update
  * itself based on a new input [[InternalRow]] for a fixed set of [[Expression Expressions]].
  */
 object GenerateSafeProjection extends CodeGenerator[Seq[Expression], Projection] {
@@ -53,36 +52,17 @@ object GenerateSafeProjection extends CodeGenerator[Seq[Expression], Projection]
     ctx.addMutableState("Object[]", values, s"this.$values = null;")
 
     val rowClass = classOf[GenericInternalRow].getName
-    var ref: DataType = null
-    val isHomogeneousStruct = if (schema.length > 0) {
-      ref = schema.fields(0).dataType
-      !schema.tail.exists(_.dataType != ref)
-    } else false
 
-    val allFields = if (isHomogeneousStruct) {
-      val counter = ctx.freshName("counter")
-      val converter = convertToSafe(ctx, ctx.getValue(tmp, ref, counter), ref)
+    val fieldWriters = schema.map(_.dataType).zipWithIndex.map { case (dt, i) =>
+      val converter = convertToSafe(ctx, ctx.getValue(tmp, dt, i.toString), dt)
       s"""
-         for (int $counter = 0; $counter < ${schema.length}; ++$counter) {
-           if (!$tmp.isNullAt($counter)) {
-              ${converter.code}
-              $values[$counter] = ${converter.value};
-           }
-         }
-      """
-    } else {
-      val fieldWriters = schema.map(_.dataType).zipWithIndex.map { case (dt, i) =>
-        val converter = convertToSafe(ctx, ctx.getValue(tmp, dt, i.toString), dt)
-        s"""
         if (!$tmp.isNullAt($i)) {
           ${converter.code}
           $values[$i] = ${converter.value};
         }
       """
-      }
-      ctx.splitExpressions(tmp, fieldWriters)
     }
-
+    val allFields = ctx.splitExpressions(tmp, fieldWriters)
     val code = s"""
       final InternalRow $tmp = $input;
       this.$values = new Object[${schema.length}];
@@ -175,7 +155,6 @@ object GenerateSafeProjection extends CodeGenerator[Seq[Expression], Projection]
           """
     }
     val allExpressions = ctx.splitExpressions(ctx.INPUT_ROW, expressionCodes)
-
     val codeBody = s"""
       public java.lang.Object generate(Object[] references) {
         return new SpecificSafeProjection(references);
@@ -184,20 +163,15 @@ object GenerateSafeProjection extends CodeGenerator[Seq[Expression], Projection]
       class SpecificSafeProjection extends ${classOf[BaseProjection].getName} {
 
         private Object[] references;
-        private InternalRow mutableRow;
+        private MutableRow mutableRow;
         ${ctx.declareMutableStates()}
+        ${ctx.declareAddedFunctions()}
 
         public SpecificSafeProjection(Object[] references) {
           this.references = references;
-          mutableRow = (InternalRow) references[references.length - 1];
+          mutableRow = (MutableRow) references[references.length - 1];
           ${ctx.initMutableStates()}
         }
-
-        public void initialize(int partitionIndex) {
-          ${ctx.initPartition()}
-        }
-
-        ${ctx.declareAddedFunctions()}
 
         public java.lang.Object apply(java.lang.Object _i) {
           InternalRow ${ctx.INPUT_ROW} = (InternalRow) _i;
@@ -212,7 +186,7 @@ object GenerateSafeProjection extends CodeGenerator[Seq[Expression], Projection]
     logDebug(s"code for ${expressions.mkString(",")}:\n${CodeFormatter.format(code)}")
 
     val c = CodeGenerator.compile(code)
-    val resultRow = new SpecificInternalRow(expressions.map(_.dataType))
+    val resultRow = new SpecificMutableRow(expressions.map(_.dataType))
     c.generate(ctx.references.toArray :+ resultRow).asInstanceOf[Projection]
   }
 }

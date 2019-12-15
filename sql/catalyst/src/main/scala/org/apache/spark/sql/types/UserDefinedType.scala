@@ -22,6 +22,8 @@ import java.util.Objects
 import org.json4s.JsonAST.JValue
 import org.json4s.JsonDSL._
 
+import org.apache.spark.annotation.DeveloperApi
+
 /**
  * The data type for User Defined Types (UDTs).
  *
@@ -94,10 +96,12 @@ abstract class UserDefinedType[UserType >: Null] extends DataType with Serializa
 }
 
 /**
+ * :: DeveloperApi ::
  * The user defined type in Python.
  *
  * Note: This can only be accessed via Python UDF, or accessed as serialized object.
  */
+@DeveloperApi
 private[sql] class PythonUserDefinedType(
     val sqlType: DataType,
     override val pyUDT: String,

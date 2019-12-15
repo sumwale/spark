@@ -18,7 +18,7 @@
 package org.apache.spark.sql.hive
 
 import java.text.NumberFormat
-import java.util.{Date, Locale}
+import java.util.Date
 
 import scala.collection.JavaConverters._
 
@@ -36,7 +36,7 @@ import org.apache.hadoop.mapred._
 import org.apache.hadoop.mapreduce.TaskType
 
 import org.apache.spark._
-import org.apache.spark.internal.{config, Logging}
+import org.apache.spark.internal.Logging
 import org.apache.spark.mapred.SparkHadoopMapRedUtil
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
@@ -44,10 +44,11 @@ import org.apache.spark.sql.execution.UnsafeKVExternalSorter
 import org.apache.spark.sql.hive.HiveShim.{ShimFileSinkDesc => FileSinkDesc}
 import org.apache.spark.sql.types._
 import org.apache.spark.util.SerializableJobConf
+import org.apache.spark.util.collection.unsafe.sort.UnsafeExternalSorter
 
 /**
  * Internal helper class that saves an RDD using a Hive OutputFormat.
- * It is based on `SparkHadoopWriter`.
+ * It is based on [[SparkHadoopWriter]].
  */
 private[hive] class SparkHiveWriterContainer(
     @transient private val jobConf: JobConf,
@@ -94,7 +95,7 @@ private[hive] class SparkHiveWriterContainer(
   }
 
   protected def getOutputName: String = {
-    val numberFormat = NumberFormat.getInstance(Locale.US)
+    val numberFormat = NumberFormat.getInstance()
     numberFormat.setMinimumIntegerDigits(5)
     numberFormat.setGroupingUsed(false)
     val extension = Utilities.getFileExtension(conf.value, fileSinkConf.getCompressed, outputFormat)
@@ -279,8 +280,8 @@ private[spark] class SparkHiveDynamicPartitionWriterContainer(
         SparkEnv.get.blockManager,
         SparkEnv.get.serializerManager,
         TaskContext.get().taskMemoryManager().pageSizeBytes,
-        SparkEnv.get.conf.get(
-          config.SHUFFLE_SPILL_NUM_ELEMENTS_FORCE_SPILL_THRESHOLD))
+        SparkEnv.get.conf.getLong("spark.shuffle.spill.numElementsForceSpillThreshold",
+          UnsafeExternalSorter.DEFAULT_NUM_ELEMENTS_FOR_SPILL_THRESHOLD))
 
       while (iterator.hasNext) {
         val inputRow = iterator.next()

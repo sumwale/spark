@@ -31,7 +31,7 @@ class DatasetSerializerRegistratorSuite extends QueryTest with SharedSQLContext 
   import testImplicits._
 
   /**
-   * Initialize the [[SparkSession]] with a [[KryoRegistrator]].
+   * Initialize the [[TestSparkSession]] with a [[KryoRegistrator]].
    */
   protected override def beforeAll(): Unit = {
     sparkConf.set("spark.kryo.registrator", TestRegistrator().getClass.getCanonicalName)

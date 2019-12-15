@@ -37,15 +37,11 @@ import org.apache.thrift.TProcessor;
 import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.protocol.TProtocolFactory;
 import org.apache.thrift.server.TServlet;
-import org.eclipse.jetty.server.AbstractConnectionFactory;
-import org.eclipse.jetty.server.ConnectionFactory;
-import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.ExecutorThreadPool;
-import org.eclipse.jetty.util.thread.ScheduledExecutorScheduler;
 
 
 public class ThriftHttpCLIService extends ThriftCLIService {
@@ -74,8 +70,7 @@ public class ThriftHttpCLIService extends ThriftCLIService {
       httpServer = new org.eclipse.jetty.server.Server(threadPool);
 
       // Connector configs
-
-      ConnectionFactory[] connectionFactories;
+      ServerConnector connector = new ServerConnector(httpServer);
       boolean useSsl = hiveConf.getBoolVar(ConfVars.HIVE_SERVER2_USE_SSL);
       String schemeName = useSsl ? "https" : "http";
       // Change connector if SSL is used
@@ -95,23 +90,7 @@ public class ThriftHttpCLIService extends ThriftCLIService {
           Arrays.toString(sslContextFactory.getExcludeProtocols()));
         sslContextFactory.setKeyStorePath(keyStorePath);
         sslContextFactory.setKeyStorePassword(keyStorePassword);
-        connectionFactories = AbstractConnectionFactory.getFactories(
-            sslContextFactory, new HttpConnectionFactory());
-      } else {
-        connectionFactories = new ConnectionFactory[] { new HttpConnectionFactory() };
-      }
-      ServerConnector connector = new ServerConnector(
-          httpServer,
-          null,
-          // Call this full constructor to set this, which forces daemon threads:
-          new ScheduledExecutorScheduler("HiveServer2-HttpHandler-JettyScheduler", true),
-          null,
-          -1,
-          -1,
-          connectionFactories);
-
-      if (hiveHost != null && !hiveHost.isEmpty()) {
-        connector.setHost(hiveHost);
+        connector = new ServerConnector(httpServer, sslContextFactory);
       }
       connector.setPort(portNum);
       // Linux:yes, Windows:no

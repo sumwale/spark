@@ -40,6 +40,7 @@ class CommitFailureTestSource extends SimpleTextSource {
     new OutputWriterFactory {
       override def newInstance(
           path: String,
+          bucketId: Option[Int],
           dataSchema: StructType,
           context: TaskAttemptContext): OutputWriter = {
         new SimpleTextOutputWriter(path, context) {
@@ -63,8 +64,6 @@ class CommitFailureTestSource extends SimpleTextSource {
           }
         }
       }
-
-      override def getFileExtension(context: TaskAttemptContext): String = ""
     }
 
   override def shortName(): String = "commit-failure-test"

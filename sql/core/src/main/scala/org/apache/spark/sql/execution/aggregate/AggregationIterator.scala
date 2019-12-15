@@ -73,10 +73,9 @@ abstract class AggregationIterator(
       startingInputBufferOffset: Int): Array[AggregateFunction] = {
     var mutableBufferOffset = 0
     var inputBufferOffset: Int = startingInputBufferOffset
-    val expressionsLength = expressions.length
-    val functions = new Array[AggregateFunction](expressionsLength)
+    val functions = new Array[AggregateFunction](expressions.length)
     var i = 0
-    while (i < expressionsLength) {
+    while (i < expressions.length) {
       val func = expressions(i).aggregateFunction
       val funcWithBoundReferences: AggregateFunction = expressions(i).mode match {
         case Partial | Complete if func.isInstanceOf[ImperativeAggregate] =>
@@ -153,7 +152,7 @@ abstract class AggregationIterator(
   protected def generateProcessRow(
       expressions: Seq[AggregateExpression],
       functions: Seq[AggregateFunction],
-      inputAttributes: Seq[Attribute]): (InternalRow, InternalRow) => Unit = {
+      inputAttributes: Seq[Attribute]): (MutableRow, InternalRow) => Unit = {
     val joinedRow = new JoinedRow
     if (expressions.nonEmpty) {
       val mergeExpressions = functions.zipWithIndex.flatMap {
@@ -168,17 +167,17 @@ abstract class AggregationIterator(
         case (ae: ImperativeAggregate, i) =>
           expressions(i).mode match {
             case Partial | Complete =>
-              (buffer: InternalRow, row: InternalRow) => ae.update(buffer, row)
+              (buffer: MutableRow, row: InternalRow) => ae.update(buffer, row)
             case PartialMerge | Final =>
-              (buffer: InternalRow, row: InternalRow) => ae.merge(buffer, row)
+              (buffer: MutableRow, row: InternalRow) => ae.merge(buffer, row)
           }
-      }.toArray
+      }
       // This projection is used to merge buffer values for all expression-based aggregates.
       val aggregationBufferSchema = functions.flatMap(_.aggBufferAttributes)
       val updateProjection =
         newMutableProjection(mergeExpressions, aggregationBufferSchema ++ inputAttributes)
 
-      (currentBuffer: InternalRow, row: InternalRow) => {
+      (currentBuffer: MutableRow, row: InternalRow) => {
         // Process all expression-based aggregate functions.
         updateProjection.target(currentBuffer)(joinedRow(currentBuffer, row))
         // Process all imperative aggregate functions.
@@ -190,11 +189,11 @@ abstract class AggregationIterator(
       }
     } else {
       // Grouping only.
-      (currentBuffer: InternalRow, row: InternalRow) => {}
+      (currentBuffer: MutableRow, row: InternalRow) => {}
     }
   }
 
-  protected val processRow: (InternalRow, InternalRow) => Unit =
+  protected val processRow: (MutableRow, InternalRow) => Unit =
     generateProcessRow(aggregateExpressions, aggregateFunctions, inputAttributes)
 
   protected val groupingProjection: UnsafeProjection =
@@ -202,7 +201,7 @@ abstract class AggregationIterator(
   protected val groupingAttributes = groupingExpressions.map(_.toAttribute)
 
   // Initializing the function used to generate the output row.
-  protected def generateResultProjection(): (UnsafeRow, InternalRow) => UnsafeRow = {
+  protected def generateResultProjection(): (UnsafeRow, MutableRow) => UnsafeRow = {
     val joinedRow = new JoinedRow
     val modes = aggregateExpressions.map(_.mode).distinct
     val bufferAttributes = aggregateFunctions.flatMap(_.aggBufferAttributes)
@@ -211,14 +210,14 @@ abstract class AggregationIterator(
         case ae: DeclarativeAggregate => ae.evaluateExpression
         case agg: AggregateFunction => NoOp
       }
-      val aggregateResult = new SpecificInternalRow(aggregateAttributes.map(_.dataType))
+      val aggregateResult = new SpecificMutableRow(aggregateAttributes.map(_.dataType))
       val expressionAggEvalProjection = newMutableProjection(evalExpressions, bufferAttributes)
       expressionAggEvalProjection.target(aggregateResult)
 
       val resultProjection =
         UnsafeProjection.create(resultExpressions, groupingAttributes ++ aggregateAttributes)
 
-      (currentGroupingKey: UnsafeRow, currentBuffer: InternalRow) => {
+      (currentGroupingKey: UnsafeRow, currentBuffer: MutableRow) => {
         // Generate results for all expression-based aggregate functions.
         expressionAggEvalProjection(currentBuffer)
         // Generate results for all imperative aggregate functions.
@@ -235,38 +234,23 @@ abstract class AggregationIterator(
       val resultProjection = UnsafeProjection.create(
         groupingAttributes ++ bufferAttributes,
         groupingAttributes ++ bufferAttributes)
-
-      // TypedImperativeAggregate stores generic object in aggregation buffer, and requires
-      // calling serialization before shuffling. See [[TypedImperativeAggregate]] for more info.
-      val typedImperativeAggregates: Array[TypedImperativeAggregate[_]] = {
-        aggregateFunctions.collect {
-          case (ag: TypedImperativeAggregate[_]) => ag
-        }
-      }
-
-      (currentGroupingKey: UnsafeRow, currentBuffer: InternalRow) => {
-        // Serializes the generic object stored in aggregation buffer
-        var i = 0
-        while (i < typedImperativeAggregates.length) {
-          typedImperativeAggregates(i).serializeAggregateBufferInPlace(currentBuffer)
-          i += 1
-        }
+      (currentGroupingKey: UnsafeRow, currentBuffer: MutableRow) => {
         resultProjection(joinedRow(currentGroupingKey, currentBuffer))
       }
     } else {
       // Grouping-only: we only output values based on grouping expressions.
       val resultProjection = UnsafeProjection.create(resultExpressions, groupingAttributes)
-      (currentGroupingKey: UnsafeRow, currentBuffer: InternalRow) => {
+      (currentGroupingKey: UnsafeRow, currentBuffer: MutableRow) => {
         resultProjection(currentGroupingKey)
       }
     }
   }
 
-  protected val generateOutput: (UnsafeRow, InternalRow) => UnsafeRow =
+  protected val generateOutput: (UnsafeRow, MutableRow) => UnsafeRow =
     generateResultProjection()
 
   /** Initializes buffer values for all aggregate functions. */
-  protected def initializeBuffer(buffer: InternalRow): Unit = {
+  protected def initializeBuffer(buffer: MutableRow): Unit = {
     expressionAggInitialProjection.target(buffer)(EmptyRow)
     var i = 0
     while (i < allImperativeAggregateFunctions.length) {

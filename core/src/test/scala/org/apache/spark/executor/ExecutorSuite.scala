@@ -41,7 +41,6 @@ class ExecutorSuite extends SparkFunSuite {
     // mock some objects to make Executor.launchTask() happy
     val conf = new SparkConf
     val serializer = new JavaSerializer(conf)
-    val taskLogger = new NamedLogger("org.apache.spark.Task")
     val mockEnv = mock(classOf[SparkEnv])
     val mockRpcEnv = mock(classOf[RpcEnv])
     val mockMetricsSystem = mock(classOf[MetricsSystem])
@@ -52,7 +51,6 @@ class ExecutorSuite extends SparkFunSuite {
     when(mockEnv.metricsSystem).thenReturn(mockMetricsSystem)
     when(mockEnv.memoryManager).thenReturn(mockMemoryManager)
     when(mockEnv.closureSerializer).thenReturn(serializer)
-    when(mockEnv.taskLogger).thenReturn(taskLogger)
     val serializedTask =
       Task.serializeWithDependencies(
         new FakeTask(0, 0),
@@ -108,7 +106,7 @@ class ExecutorSuite extends SparkFunSuite {
     try {
       executor = new Executor("id", "localhost", mockEnv, userClassPath = Nil, isLocal = true)
       // the task will be launched in a dedicated worker thread
-      executor.launchTask(mockExecutorBackend, 0, 0, "", serializedTask, (null, 0L))
+      executor.launchTask(mockExecutorBackend, 0, 0, "", serializedTask)
 
       executorSuiteHelper.latch1.await()
       // we know the task will be started, but not yet deserialized, because of the latches we

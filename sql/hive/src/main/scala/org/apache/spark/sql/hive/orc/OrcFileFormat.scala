@@ -31,10 +31,10 @@ import org.apache.hadoop.mapred.{JobConf, OutputFormat => MapRedOutputFormat, Re
 import org.apache.hadoop.mapreduce._
 import org.apache.hadoop.mapreduce.lib.input.{FileInputFormat, FileSplit}
 
-import org.apache.spark.TaskContext
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
+import org.apache.spark.sql.execution.command.CreateDataSourceTableUtils
 import org.apache.spark.sql.execution.datasources._
 import org.apache.spark.sql.hive.{HiveInspectors, HiveShim}
 import org.apache.spark.sql.sources.{Filter, _}
@@ -42,10 +42,11 @@ import org.apache.spark.sql.types.StructType
 import org.apache.spark.util.SerializableConfiguration
 
 /**
- * `FileFormat` for reading ORC files. If this is moved or renamed, please update
- * `DataSource`'s backwardCompatibilityMap.
+ * [[FileFormat]] for reading ORC files. If this is moved or renamed, please update
+ * [[DataSource]]'s backwardCompatibilityMap.
  */
-class OrcFileFormat extends FileFormat with DataSourceRegister with Serializable {
+private[sql] class OrcFileFormat
+  extends FileFormat with DataSourceRegister with Serializable {
 
   override def shortName(): String = "orc"
 
@@ -84,18 +85,10 @@ class OrcFileFormat extends FileFormat with DataSourceRegister with Serializable
     new OutputWriterFactory {
       override def newInstance(
           path: String,
+          bucketId: Option[Int],
           dataSchema: StructType,
           context: TaskAttemptContext): OutputWriter = {
-        new OrcOutputWriter(path, dataSchema, context)
-      }
-
-      override def getFileExtension(context: TaskAttemptContext): String = {
-        val compressionExtension: String = {
-          val name = context.getConfiguration.get(OrcRelation.ORC_COMPRESSION)
-          OrcRelation.extensionsForCompressionCodecNames.getOrElse(name, "")
-        }
-
-        compressionExtension + ".orc"
+        new OrcOutputWriter(path, bucketId, dataSchema, context)
       }
     }
   }
@@ -155,15 +148,12 @@ class OrcFileFormat extends FileFormat with DataSourceRegister with Serializable
           new SparkOrcNewRecordReader(orcReader, conf, fileSplit.getStart, fileSplit.getLength)
         }
 
-        val recordsIterator = new RecordReaderIterator[OrcStruct](orcRecordReader)
-        Option(TaskContext.get()).foreach(_.addTaskCompletionListener(_ => recordsIterator.close()))
-
         // Unwraps `OrcStruct`s to `UnsafeRow`s
         OrcRelation.unwrapOrcStructs(
           conf,
           requiredSchema,
           Some(orcRecordReader.getObjectInspector.asInstanceOf[StructObjectInspector]),
-          recordsIterator)
+          new RecordReaderIterator[OrcStruct](orcRecordReader))
       }
     }
   }
@@ -202,8 +192,7 @@ private[orc] class OrcSerializer(dataSchema: StructType, conf: Configuration)
       row: InternalRow): Unit = {
     val fieldRefs = oi.getAllStructFieldRefs
     var i = 0
-    val size = fieldRefs.size
-    while (i < size) {
+    while (i < fieldRefs.size) {
 
       oi.setStructFieldData(
         struct,
@@ -219,11 +208,14 @@ private[orc] class OrcSerializer(dataSchema: StructType, conf: Configuration)
 
 private[orc] class OrcOutputWriter(
     path: String,
+    bucketId: Option[Int],
     dataSchema: StructType,
     context: TaskAttemptContext)
   extends OutputWriter {
 
-  private[this] val serializer = new OrcSerializer(dataSchema, context.getConfiguration)
+  private[this] val conf = context.getConfiguration
+
+  private[this] val serializer = new OrcSerializer(dataSchema, conf)
 
   // `OrcRecordWriter.close()` creates an empty file if no rows are written at all.  We use this
   // flag to decide whether `OrcRecordWriter.close()` needs to be called.
@@ -231,10 +223,23 @@ private[orc] class OrcOutputWriter(
 
   private lazy val recordWriter: RecordWriter[NullWritable, Writable] = {
     recordWriterInstantiated = true
+    val uniqueWriteJobId = conf.get(CreateDataSourceTableUtils.DATASOURCE_WRITEJOBUUID)
+    val taskAttemptId = context.getTaskAttemptID
+    val partition = taskAttemptId.getTaskID.getId
+    val bucketString = bucketId.map(BucketingUtils.bucketIdToString).getOrElse("")
+    val compressionExtension = {
+      val name = conf.get(OrcRelation.ORC_COMPRESSION)
+      OrcRelation.extensionsForCompressionCodecNames.getOrElse(name, "")
+    }
+    // It has the `.orc` extension at the end because (de)compression tools
+    // such as gunzip would not be able to decompress this as the compression
+    // is not applied on this whole file but on each "stream" in ORC format.
+    val filename = f"part-r-$partition%05d-$uniqueWriteJobId$bucketString$compressionExtension.orc"
+
     new OrcOutputFormat().getRecordWriter(
-      new Path(path).getFileSystem(context.getConfiguration),
-      context.getConfiguration.asInstanceOf[JobConf],
-      path,
+      new Path(path, filename).getFileSystem(conf),
+      conf.asInstanceOf[JobConf],
+      new Path(path, filename).toString,
       Reporter.NULL
     ).asInstanceOf[RecordWriter[NullWritable, Writable]]
   }
@@ -273,7 +278,7 @@ private[orc] object OrcRelation extends HiveInspectors {
       maybeStructOI: Option[StructObjectInspector],
       iterator: Iterator[Writable]): Iterator[InternalRow] = {
     val deserializer = new OrcSerde
-    val mutableRow = new SpecificInternalRow(dataSchema.map(_.dataType))
+    val mutableRow = new SpecificMutableRow(dataSchema.map(_.dataType))
     val unsafeProjection = UnsafeProjection.create(dataSchema)
 
     def unwrap(oi: StructObjectInspector): Iterator[InternalRow] = {
@@ -286,8 +291,7 @@ private[orc] object OrcRelation extends HiveInspectors {
       iterator.map { value =>
         val raw = deserializer.deserialize(value)
         var i = 0
-        val length = fieldRefs.length
-        while (i < length) {
+        while (i < fieldRefs.length) {
           val fieldValue = oi.getStructFieldData(raw, fieldRefs(i))
           if (fieldValue == null) {
             mutableRow.setNullAt(fieldOrdinals(i))

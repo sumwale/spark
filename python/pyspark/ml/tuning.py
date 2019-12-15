@@ -166,8 +166,6 @@ class CrossValidator(Estimator, ValidatorParams):
     >>> evaluator = BinaryClassificationEvaluator()
     >>> cv = CrossValidator(estimator=lr, estimatorParamMaps=grid, evaluator=evaluator)
     >>> cvModel = cv.fit(dataset)
-    >>> cvModel.avgMetrics[0]
-    0.5
     >>> evaluator.evaluate(cvModel.transform(dataset))
     0.8333...
 
@@ -186,7 +184,7 @@ class CrossValidator(Estimator, ValidatorParams):
         """
         super(CrossValidator, self).__init__()
         self._setDefault(numFolds=3)
-        kwargs = self._input_kwargs
+        kwargs = self.__init__._input_kwargs
         self._set(**kwargs)
 
     @keyword_only
@@ -198,7 +196,7 @@ class CrossValidator(Estimator, ValidatorParams):
                   seed=None):
         Sets params for cross validator.
         """
-        kwargs = self._input_kwargs
+        kwargs = self.setParams._input_kwargs
         return self._set(**kwargs)
 
     @since("1.4.0")
@@ -236,7 +234,7 @@ class CrossValidator(Estimator, ValidatorParams):
                 model = est.fit(train, epm[j])
                 # TODO: duplicate evaluator to take extra params from input
                 metric = eva.evaluate(model.transform(validation, epm[j]))
-                metrics[j] += metric/nFolds
+                metrics[j] += metric
 
         if eva.isLargerBetter():
             bestIndex = np.argmax(metrics)
@@ -346,7 +344,7 @@ class TrainValidationSplit(Estimator, ValidatorParams):
         """
         super(TrainValidationSplit, self).__init__()
         self._setDefault(trainRatio=0.75)
-        kwargs = self._input_kwargs
+        kwargs = self.__init__._input_kwargs
         self._set(**kwargs)
 
     @since("2.0.0")
@@ -358,7 +356,7 @@ class TrainValidationSplit(Estimator, ValidatorParams):
                   seed=None):
         Sets params for the train validation split.
         """
-        kwargs = self._input_kwargs
+        kwargs = self.setParams._input_kwargs
         return self._set(**kwargs)
 
     @since("2.0.0")

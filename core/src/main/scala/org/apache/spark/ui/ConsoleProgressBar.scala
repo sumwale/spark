@@ -30,23 +30,22 @@ import org.apache.spark.internal.Logging
  */
 private[spark] class ConsoleProgressBar(sc: SparkContext) extends Logging {
   // Carriage return
-  private val CR = '\r'
+  val CR = '\r'
   // Update period of progress bar, in milliseconds
-  private val updatePeriodMSec =
-    sc.getConf.getTimeAsMs("spark.ui.consoleProgress.update.interval", "200")
+  val UPDATE_PERIOD = 200L
   // Delay to show up a progress bar, in milliseconds
-  private val firstDelayMSec = 500L
+  val FIRST_DELAY = 500L
 
   // The width of terminal
-  private val TerminalWidth = if (!sys.env.getOrElse("COLUMNS", "").isEmpty) {
+  val TerminalWidth = if (!sys.env.getOrElse("COLUMNS", "").isEmpty) {
     sys.env.get("COLUMNS").get.toInt
   } else {
     80
   }
 
-  private var lastFinishTime = 0L
-  private var lastUpdateTime = 0L
-  private var lastProgressBar = ""
+  var lastFinishTime = 0L
+  var lastUpdateTime = 0L
+  var lastProgressBar = ""
 
   // Schedule a refresh thread to run periodically
   private val timer = new Timer("refresh progress", true)
@@ -54,19 +53,19 @@ private[spark] class ConsoleProgressBar(sc: SparkContext) extends Logging {
     override def run() {
       refresh()
     }
-  }, firstDelayMSec, updatePeriodMSec)
+  }, FIRST_DELAY, UPDATE_PERIOD)
 
   /**
    * Try to refresh the progress bar in every cycle
    */
   private def refresh(): Unit = synchronized {
     val now = System.currentTimeMillis()
-    if (now - lastFinishTime < firstDelayMSec) {
+    if (now - lastFinishTime < FIRST_DELAY) {
       return
     }
     val stageIds = sc.statusTracker.getActiveStageIds()
     val stages = stageIds.flatMap(sc.statusTracker.getStageInfo).filter(_.numTasks() > 1)
-      .filter(now - _.submissionTime() > firstDelayMSec).sortBy(_.stageId())
+      .filter(now - _.submissionTime() > FIRST_DELAY).sortBy(_.stageId())
     if (stages.length > 0) {
       show(now, stages.take(3))  // display at most 3 stages in same time
     }
@@ -95,7 +94,7 @@ private[spark] class ConsoleProgressBar(sc: SparkContext) extends Logging {
       header + bar + tailer
     }.mkString("")
 
-    // only refresh if it's changed OR after 1 minute (or the ssh connection will be closed
+    // only refresh if it's changed of after 1 minute (or the ssh connection will be closed
     // after idle some time)
     if (bar != lastProgressBar || now - lastUpdateTime > 60 * 1000L) {
       System.err.print(CR + bar)

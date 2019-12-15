@@ -23,8 +23,7 @@ import com.fasterxml.jackson.core._
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.analysis.TypeCoercion
-import org.apache.spark.sql.catalyst.json.JacksonUtils.nextUntil
-import org.apache.spark.sql.catalyst.json.JSONOptions
+import org.apache.spark.sql.execution.datasources.json.JacksonUtils.nextUntil
 import org.apache.spark.sql.types._
 import org.apache.spark.util.Utils
 
@@ -36,14 +35,13 @@ private[sql] object InferSchema {
    *   2. Merge types by choosing the lowest type necessary to cover equal keys
    *   3. Replace any remaining null fields with string, the top type
    */
-  def infer[T](
-    json: RDD[T],
-    configOptions: JSONOptions,
-    createParser: (JsonFactory, T) => JsonParser): StructType = {
+  def infer(
+      json: RDD[String],
+      columnNameOfCorruptRecords: String,
+      configOptions: JSONOptions): StructType = {
     require(configOptions.samplingRatio > 0,
       s"samplingRatio (${configOptions.samplingRatio}) should be greater than 0")
     val shouldHandleCorruptRecord = configOptions.permissive
-    val columnNameOfCorruptRecord = configOptions.columnNameOfCorruptRecord
     val schemaData = if (configOptions.samplingRatio > 0.99) {
       json
     } else {
@@ -56,19 +54,19 @@ private[sql] object InferSchema {
       configOptions.setJacksonOptions(factory)
       iter.flatMap { row =>
         try {
-          Utils.tryWithResource(createParser(factory, row)) { parser =>
+          Utils.tryWithResource(factory.createParser(row)) { parser =>
             parser.nextToken()
             Some(inferField(parser, configOptions))
           }
         } catch {
           case _: JsonParseException if shouldHandleCorruptRecord =>
-            Some(StructType(Seq(StructField(columnNameOfCorruptRecord, StringType))))
+            Some(StructType(Seq(StructField(columnNameOfCorruptRecords, StringType))))
           case _: JsonParseException =>
             None
         }
       }
     }.fold(StructType(Seq()))(
-      compatibleRootType(columnNameOfCorruptRecord, shouldHandleCorruptRecord))
+      compatibleRootType(columnNameOfCorruptRecords, shouldHandleCorruptRecord))
 
     canonicalizeType(rootType) match {
       case Some(st: StructType) => st
@@ -80,7 +78,7 @@ private[sql] object InferSchema {
 
   private[this] val structFieldComparator = new Comparator[StructField] {
     override def compare(o1: StructField, o2: StructField): Int = {
-      o1.name.compareTo(o2.name)
+      o1.name.compare(o2.name)
     }
   }
 
@@ -207,13 +205,13 @@ private[sql] object InferSchema {
   }
 
   private def withCorruptField(
-    struct: StructType,
-    columnNameOfCorruptRecords: String): StructType = {
+      struct: StructType,
+      columnNameOfCorruptRecords: String): StructType = {
     if (!struct.fieldNames.contains(columnNameOfCorruptRecords)) {
       // If this given struct does not have a column used for corrupt records,
       // add this field.
       val newFields: Array[StructField] =
-      StructField(columnNameOfCorruptRecords, StringType, nullable = true) +: struct.fields
+        StructField(columnNameOfCorruptRecords, StringType, nullable = true) +: struct.fields
       // Note: other code relies on this sorting for correctness, so don't remove it!
       java.util.Arrays.sort(newFields, structFieldComparator)
       StructType(newFields)
@@ -227,8 +225,8 @@ private[sql] object InferSchema {
    * Remove top-level ArrayType wrappers and merge the remaining schemas
    */
   private def compatibleRootType(
-    columnNameOfCorruptRecords: String,
-    shouldHandleCorruptRecord: Boolean): (DataType, DataType) => DataType = {
+      columnNameOfCorruptRecords: String,
+      shouldHandleCorruptRecord: Boolean): (DataType, DataType) => DataType = {
     // Since we support array of json objects at the top level,
     // we need to check the element type and find the root level data type.
     case (ArrayType(ty1, _), ty2) =>
@@ -254,7 +252,7 @@ private[sql] object InferSchema {
    * Returns the most general data type for two given data types.
    */
   def compatibleType(t1: DataType, t2: DataType): DataType = {
-    TypeCoercion.findTightestCommonType(Seq(t1, t2)).getOrElse {
+    TypeCoercion.findTightestCommonTypeOfTwo(t1, t2).getOrElse {
       // t1 or t2 is a StructType, ArrayType, or an unexpected type.
       (t1, t2) match {
         // Double support larger range than fixed decimal, DecimalType.Maximum should be enough

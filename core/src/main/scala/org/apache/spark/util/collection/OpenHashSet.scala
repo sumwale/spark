@@ -48,7 +48,7 @@ class OpenHashSet[@specialized(Long, Int) T: ClassTag](
 
   require(initialCapacity <= OpenHashSet.MAX_CAPACITY,
     s"Can't make capacity bigger than ${OpenHashSet.MAX_CAPACITY} elements")
-  require(initialCapacity >= 0, "Invalid initial capacity")
+  require(initialCapacity >= 1, "Invalid initial capacity")
   require(loadFactor < 1.0, "Load factor must be less than 1.0")
   require(loadFactor > 0.0, "Load factor must be greater than 0.0")
 
@@ -212,12 +212,6 @@ class OpenHashSet[@specialized(Long, Int) T: ClassTag](
    */
   def nextPos(fromPos: Int): Int = _bitset.nextSetBit(fromPos)
 
-  def clear() {
-    _data = new Array[T](_capacity)
-    _bitset.clear()
-    _size = 0
-  }
-
   /**
    * Double the table's size and re-hash everything. We are not really using k, but it is declared
    * so Scala compiler can specialize this method (which leads to calling the specialized version
@@ -277,12 +271,8 @@ class OpenHashSet[@specialized(Long, Int) T: ClassTag](
   private def hashcode(h: Int): Int = Hashing.murmur3_32().hashInt(h).asInt()
 
   private def nextPowerOf2(n: Int): Int = {
-    if (n == 0) {
-      1
-    } else {
-      val highBit = Integer.highestOneBit(n)
-      if (highBit == n) n else highBit << 1
-    }
+    val highBit = Integer.highestOneBit(n)
+    if (highBit == n) n else highBit << 1
   }
 }
 

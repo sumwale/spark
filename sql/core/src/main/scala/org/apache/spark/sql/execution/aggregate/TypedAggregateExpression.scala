@@ -47,8 +47,6 @@ object TypedAggregateExpression {
     new TypedAggregateExpression(
       aggregator.asInstanceOf[Aggregator[Any, Any, Any]],
       None,
-      None,
-      None,
       bufferSerializer,
       bufferDeserializer,
       outputEncoder.serializer,
@@ -64,8 +62,6 @@ object TypedAggregateExpression {
 case class TypedAggregateExpression(
     aggregator: Aggregator[Any, Any, Any],
     inputDeserializer: Option[Expression],
-    inputClass: Option[Class[_]],
-    inputSchema: Option[StructType],
     bufferSerializer: Seq[NamedExpression],
     bufferDeserializer: Expression,
     outputSerializer: Seq[Expression],

@@ -75,30 +75,28 @@ public final class JavaStructuredNetworkWordCountWindowed {
       .getOrCreate();
 
     // Create DataFrame representing the stream of input lines from connection to host:port
-    Dataset<Row> lines = spark
+    Dataset<Tuple2<String, Timestamp>> lines = spark
       .readStream()
       .format("socket")
       .option("host", host)
       .option("port", port)
       .option("includeTimestamp", true)
-      .load();
+      .load().as(Encoders.tuple(Encoders.STRING(), Encoders.TIMESTAMP()));
 
     // Split the lines into words, retaining timestamps
-    Dataset<Row> words = lines
-      .as(Encoders.tuple(Encoders.STRING(), Encoders.TIMESTAMP()))
-      .flatMap(
-        new FlatMapFunction<Tuple2<String, Timestamp>, Tuple2<String, Timestamp>>() {
-          @Override
-          public Iterator<Tuple2<String, Timestamp>> call(Tuple2<String, Timestamp> t) {
-            List<Tuple2<String, Timestamp>> result = new ArrayList<>();
-            for (String word : t._1.split(" ")) {
-              result.add(new Tuple2<>(word, t._2));
-            }
-            return result.iterator();
+    Dataset<Row> words = lines.flatMap(
+      new FlatMapFunction<Tuple2<String, Timestamp>, Tuple2<String, Timestamp>>() {
+        @Override
+        public Iterator<Tuple2<String, Timestamp>> call(Tuple2<String, Timestamp> t) {
+          List<Tuple2<String, Timestamp>> result = new ArrayList<>();
+          for (String word : t._1.split(" ")) {
+            result.add(new Tuple2<>(word, t._2));
           }
-        },
-        Encoders.tuple(Encoders.STRING(), Encoders.TIMESTAMP())
-      ).toDF("word", "timestamp");
+          return result.iterator();
+        }
+      },
+      Encoders.tuple(Encoders.STRING(), Encoders.TIMESTAMP())
+    ).toDF("word", "timestamp");
 
     // Group the data by window and word and compute the count of each group
     Dataset<Row> windowedCounts = words.groupBy(

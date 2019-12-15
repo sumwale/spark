@@ -54,7 +54,6 @@ import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 // $example off:programmatic_schema$
-import org.apache.spark.sql.AnalysisException;
 
 // $example on:untyped_ops$
 // col("...") is preferable to df.col("...")
@@ -85,11 +84,11 @@ public class JavaSparkSQLExample {
   }
   // $example off:create_ds$
 
-  public static void main(String[] args) throws AnalysisException {
+  public static void main(String[] args) {
     // $example on:init_session$
     SparkSession spark = SparkSession
       .builder()
-      .appName("Java Spark SQL basic example")
+      .appName("Java Spark SQL Example")
       .config("spark.some.config.option", "some-value")
       .getOrCreate();
     // $example off:init_session$
@@ -102,7 +101,7 @@ public class JavaSparkSQLExample {
     spark.stop();
   }
 
-  private static void runBasicDataFrameExample(SparkSession spark) throws AnalysisException {
+  private static void runBasicDataFrameExample(SparkSession spark) {
     // $example on:create_df$
     Dataset<Row> df = spark.read().json("examples/src/main/resources/people.json");
 
@@ -177,31 +176,6 @@ public class JavaSparkSQLExample {
     // |  19| Justin|
     // +----+-------+
     // $example off:run_sql$
-
-    // $example on:global_temp_view$
-    // Register the DataFrame as a global temporary view
-    df.createGlobalTempView("people");
-
-    // Global temporary view is tied to a system preserved database `global_temp`
-    spark.sql("SELECT * FROM global_temp.people").show();
-    // +----+-------+
-    // | age|   name|
-    // +----+-------+
-    // |null|Michael|
-    // |  30|   Andy|
-    // |  19| Justin|
-    // +----+-------+
-
-    // Global temporary view is cross-session
-    spark.newSession().sql("SELECT * FROM global_temp.people").show();
-    // +----+-------+
-    // | age|   name|
-    // +----+-------+
-    // |null|Michael|
-    // |  30|   Andy|
-    // |  19| Justin|
-    // +----+-------+
-    // $example off:global_temp_view$
   }
 
   private static void runDatasetCreationExample(SparkSession spark) {

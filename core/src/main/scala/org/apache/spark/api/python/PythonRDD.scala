@@ -20,7 +20,7 @@ package org.apache.spark.api.python
 import java.io._
 import java.net._
 import java.nio.charset.StandardCharsets
-import java.util.{ArrayList => JArrayList, List => JList, Map => JMap}
+import java.util.{ArrayList => JArrayList, Collections, List => JList, Map => JMap}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
@@ -38,7 +38,7 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.input.PortableDataStream
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
-import org.apache.spark.util._
+import org.apache.spark.util.{SerializableConfiguration, Utils}
 
 
 private[spark] class PythonRDD(
@@ -75,7 +75,7 @@ private[spark] case class PythonFunction(
     pythonExec: String,
     pythonVer: String,
     broadcastVars: JList[Broadcast[PythonBroadcast]],
-    accumulator: PythonAccumulatorV2)
+    accumulator: Accumulator[JList[Array[Byte]]])
 
 /**
  * A wrapper for chained Python functions (from bottom to top).
@@ -200,7 +200,7 @@ private[spark] class PythonRunner(
                 val updateLen = stream.readInt()
                 val update = new Array[Byte](updateLen)
                 stream.readFully(update)
-                accumulator.add(update)
+                accumulator += Collections.singletonList(update)
               }
               // Check whether the worker is ready to be re-used.
               if (stream.readInt() == SpecialLengths.END_OF_STREAM) {
@@ -461,13 +461,13 @@ private[spark] object PythonRDD extends Logging {
   JavaRDD[Array[Byte]] = {
     val file = new DataInputStream(new FileInputStream(filename))
     try {
-      val objs = new mutable.ArrayBuffer[Array[Byte]]
+      val objs = new collection.mutable.ArrayBuffer[Array[Byte]]
       try {
         while (true) {
           val length = file.readInt()
           val obj = new Array[Byte](length)
           file.readFully(obj)
-          objs += obj
+          objs.append(obj)
         }
       } catch {
         case eof: EOFException => // No-op
@@ -866,13 +866,11 @@ class BytesToString extends org.apache.spark.api.java.function.Function[Array[By
 }
 
 /**
- * Internal class that acts as an `AccumulatorV2` for Python accumulators. Inside, it
+ * Internal class that acts as an `AccumulatorParam` for Python accumulators. Inside, it
  * collects a list of pickled strings that we pass to Python through a socket.
  */
-private[spark] class PythonAccumulatorV2(
-    @transient private val serverHost: String,
-    private val serverPort: Int)
-  extends CollectionAccumulator[Array[Byte]] {
+private class PythonAccumulatorParam(@transient private val serverHost: String, serverPort: Int)
+  extends AccumulatorParam[JList[Array[Byte]]] {
 
   Utils.checkHost(serverHost, "Expected hostname")
 
@@ -882,33 +880,30 @@ private[spark] class PythonAccumulatorV2(
    * We try to reuse a single Socket to transfer accumulator updates, as they are all added
    * by the DAGScheduler's single-threaded RpcEndpoint anyway.
    */
-  @transient private var socket: Socket = _
+  @transient var socket: Socket = _
 
-  private def openSocket(): Socket = synchronized {
+  def openSocket(): Socket = synchronized {
     if (socket == null || socket.isClosed) {
       socket = new Socket(serverHost, serverPort)
     }
     socket
   }
 
-  // Need to override so the types match with PythonFunction
-  override def copyAndReset(): PythonAccumulatorV2 = new PythonAccumulatorV2(serverHost, serverPort)
+  override def zero(value: JList[Array[Byte]]): JList[Array[Byte]] = new JArrayList
 
-  override def merge(other: AccumulatorV2[Array[Byte], JList[Array[Byte]]]): Unit = synchronized {
-    val otherPythonAccumulator = other.asInstanceOf[PythonAccumulatorV2]
-    // This conditional isn't strictly speaking needed - merging only currently happens on the
-    // driver program - but that isn't gauranteed so incase this changes.
+  override def addInPlace(val1: JList[Array[Byte]], val2: JList[Array[Byte]])
+      : JList[Array[Byte]] = synchronized {
     if (serverHost == null) {
-      // We are on the worker
-      super.merge(otherPythonAccumulator)
+      // This happens on the worker node, where we just want to remember all the updates
+      val1.addAll(val2)
+      val1
     } else {
       // This happens on the master, where we pass the updates to Python through a socket
       val socket = openSocket()
       val in = socket.getInputStream
       val out = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream, bufferSize))
-      val values = other.value
-      out.writeInt(values.size)
-      for (array <- values.asScala) {
+      out.writeInt(val2.size)
+      for (array <- val2.asScala) {
         out.writeInt(array.length)
         out.write(array)
       }
@@ -918,6 +913,7 @@ private[spark] class PythonAccumulatorV2(
       if (byteRead == -1) {
         throw new SparkException("EOF reached before Python server acknowledged")
       }
+      null
     }
   }
 }

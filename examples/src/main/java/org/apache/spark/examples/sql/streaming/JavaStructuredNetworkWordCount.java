@@ -53,20 +53,19 @@ public final class JavaStructuredNetworkWordCount {
       .getOrCreate();
 
     // Create DataFrame representing the stream of input lines from connection to host:port
-    Dataset<Row> lines = spark
+    Dataset<String> lines = spark
       .readStream()
       .format("socket")
       .option("host", host)
       .option("port", port)
-      .load();
+      .load().as(Encoders.STRING());
 
     // Split the lines into words
-    Dataset<String> words = lines.as(Encoders.STRING())
-      .flatMap(new FlatMapFunction<String, String>() {
-        @Override
-        public Iterator<String> call(String x) {
-          return Arrays.asList(x.split(" ")).iterator();
-        }
+    Dataset<String> words = lines.flatMap(new FlatMapFunction<String, String>() {
+      @Override
+      public Iterator<String> call(String x) {
+        return Arrays.asList(x.split(" ")).iterator();
+      }
     }, Encoders.STRING());
 
     // Generate running word count

@@ -158,7 +158,7 @@ public final class OnHeapColumnVector extends ColumnVector {
     if (dictionary == null) {
       return byteData[rowId];
     } else {
-      return (byte) dictionary.decodeToInt(dictionaryIds.getDictId(rowId));
+      return (byte) dictionary.decodeToInt(dictionaryIds.getInt(rowId));
     }
   }
 
@@ -188,7 +188,7 @@ public final class OnHeapColumnVector extends ColumnVector {
     if (dictionary == null) {
       return shortData[rowId];
     } else {
-      return (short) dictionary.decodeToInt(dictionaryIds.getDictId(rowId));
+      return (short) dictionary.decodeToInt(dictionaryIds.getInt(rowId));
     }
   }
 
@@ -230,19 +230,8 @@ public final class OnHeapColumnVector extends ColumnVector {
     if (dictionary == null) {
       return intData[rowId];
     } else {
-      return dictionary.decodeToInt(dictionaryIds.getDictId(rowId));
+      return dictionary.decodeToInt(dictionaryIds.getInt(rowId));
     }
-  }
-
-  /**
-   * Returns the dictionary Id for rowId.
-   * This should only be called when the ColumnVector is dictionaryIds.
-   * We have this separate method for dictionaryIds as per SPARK-16928.
-   */
-  public int getDictId(int rowId) {
-    assert(dictionary == null)
-            : "A ColumnVector dictionary should not have a dictionary for itself.";
-    return intData[rowId];
   }
 
   //
@@ -282,7 +271,7 @@ public final class OnHeapColumnVector extends ColumnVector {
     if (dictionary == null) {
       return longData[rowId];
     } else {
-      return dictionary.decodeToLong(dictionaryIds.getDictId(rowId));
+      return dictionary.decodeToLong(dictionaryIds.getInt(rowId));
     }
   }
 
@@ -321,7 +310,7 @@ public final class OnHeapColumnVector extends ColumnVector {
     if (dictionary == null) {
       return floatData[rowId];
     } else {
-      return dictionary.decodeToFloat(dictionaryIds.getDictId(rowId));
+      return dictionary.decodeToFloat(dictionaryIds.getInt(rowId));
     }
   }
 
@@ -362,7 +351,7 @@ public final class OnHeapColumnVector extends ColumnVector {
     if (dictionary == null) {
       return doubleData[rowId];
     } else {
-      return dictionary.decodeToDouble(dictionaryIds.getDictId(rowId));
+      return dictionary.decodeToDouble(dictionaryIds.getInt(rowId));
     }
   }
 

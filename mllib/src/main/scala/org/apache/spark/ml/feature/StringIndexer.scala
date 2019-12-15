@@ -60,7 +60,7 @@ private[feature] trait StringIndexerBase extends Params with HasInputCol with Ha
  * The indices are in [0, numLabels), ordered by label frequencies.
  * So the most frequent label gets index 0.
  *
- * @see `IndexToString` for the inverse transformation
+ * @see [[IndexToString]] for the inverse transformation
  */
 @Since("1.4.0")
 class StringIndexer @Since("1.4.0") (
@@ -85,7 +85,6 @@ class StringIndexer @Since("1.4.0") (
 
   @Since("2.0.0")
   override def fit(dataset: Dataset[_]): StringIndexerModel = {
-    transformSchema(dataset.schema, logging = true)
     val counts = dataset.select(col($(inputCol)).cast(StringType))
       .rdd
       .map(_.getString(0))
@@ -113,11 +112,11 @@ object StringIndexer extends DefaultParamsReadable[StringIndexer] {
 /**
  * Model fitted by [[StringIndexer]].
  *
- * @param labels  Ordered list of labels, corresponding to indices to be assigned.
- *
- * @note During transformation, if the input column does not exist,
- * `StringIndexerModel.transform` would return the input dataset unmodified.
+ * NOTE: During transformation, if the input column does not exist,
+ * [[StringIndexerModel.transform]] would return the input dataset unmodified.
  * This is a temporary fix for the case when target labels do not exist during prediction.
+ *
+ * @param labels  Ordered list of labels, corresponding to indices to be assigned.
  */
 @Since("1.4.0")
 class StringIndexerModel (
@@ -161,7 +160,7 @@ class StringIndexerModel (
         "Skip StringIndexerModel.")
       return dataset.toDF
     }
-    transformSchema(dataset.schema, logging = true)
+    validateAndTransformSchema(dataset.schema)
 
     val indexer = udf { label: String =>
       if (labelToIndex.contains(label)) {
@@ -247,12 +246,12 @@ object StringIndexerModel extends MLReadable[StringIndexerModel] {
 }
 
 /**
- * A `Transformer` that maps a column of indices back to a new column of corresponding
+ * A [[Transformer]] that maps a column of indices back to a new column of corresponding
  * string values.
  * The index-string mapping is either from the ML attributes of the input column,
  * or from user-supplied labels (which take precedence over ML attributes).
  *
- * @see `StringIndexer` for converting strings into indices
+ * @see [[StringIndexer]] for converting strings into indices
  */
 @Since("1.5.0")
 class IndexToString private[ml] (@Since("1.5.0") override val uid: String)
@@ -306,7 +305,6 @@ class IndexToString private[ml] (@Since("1.5.0") override val uid: String)
 
   @Since("2.0.0")
   override def transform(dataset: Dataset[_]): DataFrame = {
-    transformSchema(dataset.schema, logging = true)
     val inputColSchema = dataset.schema($(inputCol))
     // If the labels array is empty use column metadata
     val values = if (!isDefined(labels) || $(labels).isEmpty) {

@@ -40,12 +40,12 @@ case class SortMergeJoinExec(
     left: SparkPlan,
     right: SparkPlan) extends BinaryExecNode with CodegenSupport {
 
-  override lazy val metrics = Map(
+  override private[sql] lazy val metrics = Map(
     "numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows"))
 
   override def output: Seq[Attribute] = {
     joinType match {
-      case _: InnerLike =>
+      case Inner =>
         left.output ++ right.output
       case LeftOuter =>
         left.output ++ right.output.map(_.withNullability(true))
@@ -64,8 +64,7 @@ case class SortMergeJoinExec(
   }
 
   override def outputPartitioning: Partitioning = joinType match {
-    case _: InnerLike =>
-      PartitioningCollection(Seq(left.outputPartitioning, right.outputPartitioning))
+    case Inner => PartitioningCollection(Seq(left.outputPartitioning, right.outputPartitioning))
     // For left and right outer joins, the output is partitioned by the streamed input's join keys.
     case LeftOuter => left.outputPartitioning
     case RightOuter => right.outputPartitioning
@@ -79,17 +78,7 @@ case class SortMergeJoinExec(
   override def requiredChildDistribution: Seq[Distribution] =
     ClusteredDistribution(leftKeys) :: ClusteredDistribution(rightKeys) :: Nil
 
-  override def outputOrdering: Seq[SortOrder] = joinType match {
-    // For left and right outer joins, the output is ordered by the streamed input's join keys.
-    case LeftOuter => requiredOrders(leftKeys)
-    case RightOuter => requiredOrders(rightKeys)
-    // There are null rows in both streams, so there is no order.
-    case FullOuter => Nil
-    case _: InnerLike | LeftExistence(_) => requiredOrders(leftKeys)
-    case x =>
-      throw new IllegalArgumentException(
-        s"${getClass.getSimpleName} should not take $x as the JoinType")
-  }
+  override def outputOrdering: Seq[SortOrder] = requiredOrders(leftKeys)
 
   override def requiredChildOrdering: Seq[Seq[SortOrder]] =
     requiredOrders(leftKeys) :: requiredOrders(rightKeys) :: Nil
@@ -111,7 +100,7 @@ case class SortMergeJoinExec(
     left.execute().zipPartitions(right.execute()) { (leftIter, rightIter) =>
       val boundCondition: (InternalRow) => Boolean = {
         condition.map { cond =>
-          newPredicate(cond, left.output ++ right.output).eval _
+          newPredicate(cond, left.output ++ right.output)
         }.getOrElse {
           (r: InternalRow) => true
         }
@@ -122,7 +111,7 @@ case class SortMergeJoinExec(
       val resultProj: InternalRow => InternalRow = UnsafeProjection.create(output, output)
 
       joinType match {
-        case _: InnerLike =>
+        case Inner =>
           new RowIterator {
             private[this] var currentLeftRow: InternalRow = _
             private[this] var currentRightMatches: ArrayBuffer[InternalRow] = _
@@ -285,7 +274,7 @@ case class SortMergeJoinExec(
         case j: ExistenceJoin =>
           new RowIterator {
             private[this] var currentLeftRow: InternalRow = _
-            private[this] val result: InternalRow = new GenericInternalRow(Array[Any](null))
+            private[this] val result: MutableRow = new GenericMutableRow(Array[Any](null))
             private[this] val smjScanner = new SortMergeJoinScanner(
               createLeftKeyGenerator(),
               createRightKeyGenerator(),
@@ -329,7 +318,7 @@ case class SortMergeJoinExec(
   }
 
   override def supportCodegen: Boolean = {
-    joinType.isInstanceOf[InnerLike]
+    joinType == Inner
   }
 
   override def inputRDDs(): Seq[RDD[InternalRow]] = {
@@ -613,7 +602,7 @@ private[joins] class SortMergeJoinScanner(
   private[this] val bufferedMatches: ArrayBuffer[InternalRow] = new ArrayBuffer[InternalRow]
 
   // Initialization (note: do _not_ want to advance streamed here).
-  private[this] lazy val initBuffered = advancedBufferedToRowWithNullFreeJoinKey()
+  advancedBufferedToRowWithNullFreeJoinKey()
 
   // --- Public methods ---------------------------------------------------------------------------
 
@@ -724,7 +713,6 @@ private[joins] class SortMergeJoinScanner(
     if (streamedIter.advanceNext()) {
       streamedRow = streamedIter.getRow
       streamedRowKey = streamedKeyGenerator(streamedRow)
-      initBuffered
       true
     } else {
       streamedRow = null
@@ -965,12 +953,12 @@ private class SortMergeFullOuterJoinScanner(
     }
 
     if (leftMatches.size <= leftMatched.capacity) {
-      leftMatched.clearUntil(leftMatches.size)
+      leftMatched.clear()
     } else {
       leftMatched = new BitSet(leftMatches.size)
     }
     if (rightMatches.size <= rightMatched.capacity) {
-      rightMatched.clearUntil(rightMatches.size)
+      rightMatched.clear()
     } else {
       rightMatched = new BitSet(rightMatches.size)
     }

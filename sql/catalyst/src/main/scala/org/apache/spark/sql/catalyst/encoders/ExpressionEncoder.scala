@@ -45,18 +45,8 @@ import org.apache.spark.util.Utils
 object ExpressionEncoder {
   def apply[T : TypeTag](): ExpressionEncoder[T] = {
     // We convert the not-serializable TypeTag into StructType and ClassTag.
-    val mirror = ScalaReflection.mirror
-    val tpe = typeTag[T].in(mirror).tpe
-
-    if (ScalaReflection.optionOfProductType(tpe)) {
-      throw new UnsupportedOperationException(
-        "Cannot create encoder for Option of Product type, because Product type is represented " +
-          "as a row, and the entire row can not be null in Spark SQL like normal databases. " +
-          "You can wrap your type with Tuple1 if you do want top level null Product objects, " +
-          "e.g. instead of creating `Dataset[Option[MyClass]]`, you can do something like " +
-          "`val ds: Dataset[Tuple1[MyClass]] = Seq(Tuple1(MyClass(...)), Tuple1(null)).toDS`")
-    }
-
+    val mirror = typeTag[T].mirror
+    val tpe = typeTag[T].tpe
     val cls = mirror.runtimeClass(tpe)
     val flat = !ScalaReflection.definedByConstructorParams(tpe)
 
@@ -64,9 +54,9 @@ object ExpressionEncoder {
     val nullSafeInput = if (flat) {
       inputObject
     } else {
-      // For input object of Product type, we can't encode it to row if it's null, as Spark SQL
+      // For input object of non-flat type, we can't encode it to row if it's null, as Spark SQL
       // doesn't allow top-level row to be null, only its columns can be null.
-      AssertNotNull(inputObject, Seq("top level Product input object"))
+      AssertNotNull(inputObject, Seq("top level non-flat input object"))
     }
     val serializer = ScalaReflection.serializerFor[T](nullSafeInput)
     val deserializer = ScalaReflection.deserializerFor[T]
@@ -179,10 +169,6 @@ object ExpressionEncoder {
       ClassTag(cls))
   }
 
-  // Tuple1
-  def tuple[T](e: ExpressionEncoder[T]): ExpressionEncoder[Tuple1[T]] =
-    tuple(Seq(e)).asInstanceOf[ExpressionEncoder[Tuple1[T]]]
-
   def tuple[T1, T2](
       e1: ExpressionEncoder[T1],
       e2: ExpressionEncoder[T2]): ExpressionEncoder[(T1, T2)] =
@@ -266,7 +252,7 @@ case class ExpressionEncoder[T](
   private lazy val extractProjection = GenerateUnsafeProjection.generate(serializer)
 
   @transient
-  private lazy val inputRow = new GenericInternalRow(1)
+  private lazy val inputRow = new GenericMutableRow(1)
 
   @transient
   private lazy val constructProjection = GenerateSafeProjection.generate(deserializer :: Nil)

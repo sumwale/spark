@@ -19,11 +19,13 @@ package org.apache.spark.unsafe.map;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.*;
 
 import scala.Tuple2;
 import scala.Tuple2$;
+import scala.runtime.AbstractFunction1;
 
 import org.junit.After;
 import org.junit.Assert;
@@ -73,6 +75,13 @@ public abstract class AbstractBytesToBytesMapSuite {
   @Mock(answer = RETURNS_SMART_NULLS) BlockManager blockManager;
   @Mock(answer = RETURNS_SMART_NULLS) DiskBlockManager diskBlockManager;
 
+  private static final class CompressStream extends AbstractFunction1<OutputStream, OutputStream> {
+    @Override
+    public OutputStream apply(OutputStream stream) {
+      return stream;
+    }
+  }
+
   @Before
   public void setup() {
     memoryManager =
@@ -111,9 +120,9 @@ public abstract class AbstractBytesToBytesMapSuite {
 
         return new DiskBlockObjectWriter(
           (File) args[1],
-          serializerManager,
           (SerializerInstance) args[2],
           (Integer) args[3],
+          new CompressStream(),
           false,
           (ShuffleWriteMetrics) args[4],
           (BlockId) args[0]

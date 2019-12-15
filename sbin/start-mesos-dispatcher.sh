@@ -34,14 +34,7 @@ if [ "$SPARK_MESOS_DISPATCHER_PORT" = "" ]; then
 fi
 
 if [ "$SPARK_MESOS_DISPATCHER_HOST" = "" ]; then
-  case `uname` in
-      (SunOS)
-	  SPARK_MESOS_DISPATCHER_HOST="`/usr/sbin/check-hostname | awk '{print $NF}'`"
-	  ;;
-      (*)
-	  SPARK_MESOS_DISPATCHER_HOST="`hostname -f`"
-	  ;;
-  esac
+  SPARK_MESOS_DISPATCHER_HOST=`hostname`
 fi
 
 if [ "$SPARK_MESOS_DISPATCHER_NUM" = "" ]; then

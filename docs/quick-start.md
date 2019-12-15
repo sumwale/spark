@@ -40,7 +40,7 @@ RDDs have _[actions](programming-guide.html#actions)_, which return values, and 
 
 {% highlight scala %}
 scala> textFile.count() // Number of items in this RDD
-res0: Long = 126 // May be different from yours as README.md will change over time, similar to other outputs
+res0: Long = 126
 
 scala> textFile.first() // First item in this RDD
 res1: String = # Apache Spark
@@ -74,10 +74,10 @@ Spark's primary abstraction is a distributed collection of items called a Resili
 RDDs have _[actions](programming-guide.html#actions)_, which return values, and _[transformations](programming-guide.html#transformations)_, which return pointers to new RDDs. Let's start with a few actions:
 
 {% highlight python %}
->>> textFile.count()  # Number of items in this RDD
+>>> textFile.count() # Number of items in this RDD
 126
 
->>> textFile.first()  # First item in this RDD
+>>> textFile.first() # First item in this RDD
 u'# Apache Spark'
 {% endhighlight %}
 
@@ -90,7 +90,7 @@ Now let's use a transformation. We will use the [`filter`](programming-guide.htm
 We can chain together transformations and actions:
 
 {% highlight python %}
->>> textFile.filter(lambda line: "Spark" in line).count()  # How many lines contain "Spark"?
+>>> textFile.filter(lambda line: "Spark" in line).count() # How many lines contain "Spark"?
 15
 {% endhighlight %}
 
@@ -184,10 +184,10 @@ scala> linesWithSpark.cache()
 res7: linesWithSpark.type = MapPartitionsRDD[2] at filter at <console>:27
 
 scala> linesWithSpark.count()
-res8: Long = 15
+res8: Long = 19
 
 scala> linesWithSpark.count()
-res9: Long = 15
+res9: Long = 19
 {% endhighlight %}
 
 It may seem silly to use Spark to explore and cache a 100-line text file. The interesting part is
@@ -202,10 +202,10 @@ a cluster, as described in the [programming guide](programming-guide.html#initia
 >>> linesWithSpark.cache()
 
 >>> linesWithSpark.count()
-15
+19
 
 >>> linesWithSpark.count()
-15
+19
 {% endhighlight %}
 
 It may seem silly to use Spark to explore and cache a 100-line text file. The interesting part is
@@ -240,8 +240,7 @@ object SimpleApp {
     val logData = sc.textFile(logFile, 2).cache()
     val numAs = logData.filter(line => line.contains("a")).count()
     val numBs = logData.filter(line => line.contains("b")).count()
-    println(s"Lines with a: $numAs, Lines with b: $numBs")
-    sc.stop()
+    println("Lines with a: %s, Lines with b: %s".format(numAs, numBs))
   }
 }
 {% endhighlight %}
@@ -260,7 +259,7 @@ object which contains information about our
 application. 
 
 Our application depends on the Spark API, so we'll also include an sbt configuration file, 
-`build.sbt`, which explains that Spark is a dependency. This file also adds a repository that 
+`simple.sbt`, which explains that Spark is a dependency. This file also adds a repository that 
 Spark depends on:
 
 {% highlight scala %}
@@ -273,7 +272,7 @@ scalaVersion := "{{site.SCALA_VERSION}}"
 libraryDependencies += "org.apache.spark" %% "spark-core" % "{{site.SPARK_VERSION}}"
 {% endhighlight %}
 
-For sbt to work correctly, we'll need to layout `SimpleApp.scala` and `build.sbt`
+For sbt to work correctly, we'll need to layout `SimpleApp.scala` and `simple.sbt`
 according to the typical directory structure. Once that is in place, we can create a JAR package
 containing the application's code, then use the `spark-submit` script to run our program.
 
@@ -281,7 +280,7 @@ containing the application's code, then use the `spark-submit` script to run our
 # Your directory layout should look like this
 $ find .
 .
-./build.sbt
+./simple.sbt
 ./src
 ./src/main
 ./src/main/scala
@@ -329,8 +328,6 @@ public class SimpleApp {
     }).count();
 
     System.out.println("Lines with a: " + numAs + ", lines with b: " + numBs);
-    
-    sc.stop();
   }
 }
 {% endhighlight %}
@@ -410,8 +407,6 @@ numAs = logData.filter(lambda s: 'a' in s).count()
 numBs = logData.filter(lambda s: 'b' in s).count()
 
 print("Lines with a: %i, lines with b: %i" % (numAs, numBs))
-
-sc.stop()
 {% endhighlight %}
 
 

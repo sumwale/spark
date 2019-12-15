@@ -55,7 +55,7 @@ private[spark] class UnifiedMemoryManager private[memory] (
     onHeapStorageRegionSize,
     maxHeapMemory - onHeapStorageRegionSize) {
 
-  protected def assertInvariants(): Unit = {
+  private def assertInvariants(): Unit = {
     assert(onHeapExecutionMemoryPool.poolSize + onHeapStorageMemoryPool.poolSize == maxHeapMemory)
     assert(
       offHeapExecutionMemoryPool.poolSize + offHeapStorageMemoryPool.poolSize == maxOffHeapMemory)

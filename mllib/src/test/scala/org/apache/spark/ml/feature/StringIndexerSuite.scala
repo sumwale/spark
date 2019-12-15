@@ -29,8 +29,6 @@ import org.apache.spark.sql.types.{DoubleType, StringType, StructField, StructTy
 class StringIndexerSuite
   extends SparkFunSuite with MLlibTestSparkContext with DefaultReadWriteTest {
 
-  import testImplicits._
-
   test("params") {
     ParamsSuite.checkParams(new StringIndexer)
     val model = new StringIndexerModel("indexer", Array("a", "b"))
@@ -40,8 +38,8 @@ class StringIndexerSuite
   }
 
   test("StringIndexer") {
-    val data = Seq((0, "a"), (1, "b"), (2, "c"), (3, "a"), (4, "a"), (5, "c"))
-    val df = data.toDF("id", "label")
+    val data = sc.parallelize(Seq((0, "a"), (1, "b"), (2, "c"), (3, "a"), (4, "a"), (5, "c")), 2)
+    val df = spark.createDataFrame(data).toDF("id", "label")
     val indexer = new StringIndexer()
       .setInputCol("label")
       .setOutputCol("labelIndex")
@@ -63,10 +61,10 @@ class StringIndexerSuite
   }
 
   test("StringIndexerUnseen") {
-    val data = Seq((0, "a"), (1, "b"), (4, "b"))
-    val data2 = Seq((0, "a"), (1, "b"), (2, "c"))
-    val df = data.toDF("id", "label")
-    val df2 = data2.toDF("id", "label")
+    val data = sc.parallelize(Seq((0, "a"), (1, "b"), (4, "b")), 2)
+    val data2 = sc.parallelize(Seq((0, "a"), (1, "b"), (2, "c")), 2)
+    val df = spark.createDataFrame(data).toDF("id", "label")
+    val df2 = spark.createDataFrame(data2).toDF("id", "label")
     val indexer = new StringIndexer()
       .setInputCol("label")
       .setOutputCol("labelIndex")
@@ -94,8 +92,8 @@ class StringIndexerSuite
   }
 
   test("StringIndexer with a numeric input column") {
-    val data = Seq((0, 100), (1, 200), (2, 300), (3, 100), (4, 100), (5, 300))
-    val df = data.toDF("id", "label")
+    val data = sc.parallelize(Seq((0, 100), (1, 200), (2, 300), (3, 100), (4, 100), (5, 300)), 2)
+    val df = spark.createDataFrame(data).toDF("id", "label")
     val indexer = new StringIndexer()
       .setInputCol("label")
       .setOutputCol("labelIndex")
@@ -121,21 +119,13 @@ class StringIndexerSuite
   }
 
   test("StringIndexerModel can't overwrite output column") {
-    val df = Seq((1, 2), (3, 4)).toDF("input", "output")
-    intercept[IllegalArgumentException] {
-      new StringIndexer()
-        .setInputCol("input")
-        .setOutputCol("output")
-        .fit(df)
-    }
-
+    val df = spark.createDataFrame(Seq((1, 2), (3, 4))).toDF("input", "output")
     val indexer = new StringIndexer()
       .setInputCol("input")
-      .setOutputCol("indexedInput")
+      .setOutputCol("output")
       .fit(df)
-
     intercept[IllegalArgumentException] {
-      indexer.setOutputCol("output").transform(df)
+      indexer.transform(df)
     }
   }
 
@@ -163,7 +153,9 @@ class StringIndexerSuite
 
   test("IndexToString.transform") {
     val labels = Array("a", "b", "c")
-    val df0 = Seq((0, "a"), (1, "b"), (2, "c"), (0, "a")).toDF("index", "expected")
+    val df0 = spark.createDataFrame(Seq(
+      (0, "a"), (1, "b"), (2, "c"), (0, "a")
+    )).toDF("index", "expected")
 
     val idxToStr0 = new IndexToString()
       .setInputCol("index")
@@ -187,8 +179,8 @@ class StringIndexerSuite
   }
 
   test("StringIndexer, IndexToString are inverses") {
-    val data = Seq((0, "a"), (1, "b"), (2, "c"), (3, "a"), (4, "a"), (5, "c"))
-    val df = data.toDF("id", "label")
+    val data = sc.parallelize(Seq((0, "a"), (1, "b"), (2, "c"), (3, "a"), (4, "a"), (5, "c")), 2)
+    val df = spark.createDataFrame(data).toDF("id", "label")
     val indexer = new StringIndexer()
       .setInputCol("label")
       .setOutputCol("labelIndex")
@@ -220,8 +212,8 @@ class StringIndexerSuite
   }
 
   test("StringIndexer metadata") {
-    val data = Seq((0, "a"), (1, "b"), (2, "c"), (3, "a"), (4, "a"), (5, "c"))
-    val df = data.toDF("id", "label")
+    val data = sc.parallelize(Seq((0, "a"), (1, "b"), (2, "c"), (3, "a"), (4, "a"), (5, "c")), 2)
+    val df = spark.createDataFrame(data).toDF("id", "label")
     val indexer = new StringIndexer()
       .setInputCol("label")
       .setOutputCol("labelIndex")

@@ -115,12 +115,12 @@ class UISeleniumSuite extends SparkFunSuite with WebBrowser with Matchers with B
       val rdd = sc.parallelize(Seq(1, 2, 3))
       rdd.persist(StorageLevels.DISK_ONLY).count()
       eventually(timeout(5 seconds), interval(50 milliseconds)) {
-        goToUi(ui, "/Spark Cache")
+        goToUi(ui, "/storage")
         val tableRowText = findAll(cssSelector("#storage-by-rdd-table td")).map(_.text).toSeq
         tableRowText should contain (StorageLevels.DISK_ONLY.description)
       }
       eventually(timeout(5 seconds), interval(50 milliseconds)) {
-        goToUi(ui, "/Spark Cache/rdd/?id=0")
+        goToUi(ui, "/storage/rdd/?id=0")
         val tableRowText = findAll(cssSelector("#rdd-storage-by-block-table td")).map(_.text).toSeq
         tableRowText should contain (StorageLevels.DISK_ONLY.description)
       }
@@ -134,12 +134,12 @@ class UISeleniumSuite extends SparkFunSuite with WebBrowser with Matchers with B
       rdd.unpersist()
       rdd.persist(StorageLevels.MEMORY_ONLY).count()
       eventually(timeout(5 seconds), interval(50 milliseconds)) {
-        goToUi(ui, "/Spark Cache")
+        goToUi(ui, "/storage")
         val tableRowText = findAll(cssSelector("#storage-by-rdd-table td")).map(_.text).toSeq
         tableRowText should contain (StorageLevels.MEMORY_ONLY.description)
       }
       eventually(timeout(5 seconds), interval(50 milliseconds)) {
-        goToUi(ui, "/Spark Cache/rdd/?id=0")
+        goToUi(ui, "/storage/rdd/?id=0")
         val tableRowText = findAll(cssSelector("#rdd-storage-by-block-table td")).map(_.text).toSeq
         tableRowText should contain (StorageLevels.MEMORY_ONLY.description)
       }
@@ -192,22 +192,6 @@ class UISeleniumSuite extends SparkFunSuite with WebBrowser with Matchers with B
     def hasKillLink: Boolean = find(className("kill-link")).isDefined
     def runSlowJob(sc: SparkContext) {
       sc.parallelize(1 to 10).map{x => Thread.sleep(10000); x}.countAsync()
-    }
-
-    withSpark(newSparkContext(killEnabled = true)) { sc =>
-      runSlowJob(sc)
-      eventually(timeout(5 seconds), interval(50 milliseconds)) {
-        goToUi(sc, "/jobs")
-        assert(hasKillLink)
-      }
-    }
-
-    withSpark(newSparkContext(killEnabled = false)) { sc =>
-      runSlowJob(sc)
-      eventually(timeout(5 seconds), interval(50 milliseconds)) {
-        goToUi(sc, "/jobs")
-        assert(!hasKillLink)
-      }
     }
 
     withSpark(newSparkContext(killEnabled = true)) { sc =>
@@ -442,7 +426,7 @@ class UISeleniumSuite extends SparkFunSuite with WebBrowser with Matchers with B
         goToUi(sc, "")
         find(cssSelector("""ul li a[href*="jobs"]""")) should not be(None)
         find(cssSelector("""ul li a[href*="stages"]""")) should not be(None)
-        find(cssSelector("""ul li a[href*="Spark Cache"]""")) should not be(None)
+        find(cssSelector("""ul li a[href*="storage"]""")) should not be(None)
         find(cssSelector("""ul li a[href*="environment"]""")) should not be(None)
         find(cssSelector("""ul li a[href*="foo"]""")) should not be(None)
       }
@@ -456,7 +440,7 @@ class UISeleniumSuite extends SparkFunSuite with WebBrowser with Matchers with B
         goToUi(sc, "")
         find(cssSelector("""ul li a[href*="jobs"]""")) should not be(None)
         find(cssSelector("""ul li a[href*="stages"]""")) should not be(None)
-        find(cssSelector("""ul li a[href*="Spark Cache"]""")) should not be(None)
+        find(cssSelector("""ul li a[href*="storage"]""")) should not be(None)
         find(cssSelector("""ul li a[href*="environment"]""")) should not be(None)
         find(cssSelector("""ul li a[href*="foo"]""")) should be(None)
       }
@@ -469,27 +453,23 @@ class UISeleniumSuite extends SparkFunSuite with WebBrowser with Matchers with B
   }
 
   test("kill stage POST/GET response is correct") {
-    withSpark(newSparkContext(killEnabled = true)) { sc =>
-      sc.parallelize(1 to 10).map{x => Thread.sleep(10000); x}.countAsync()
-      eventually(timeout(5 seconds), interval(50 milliseconds)) {
-        val url = new URL(
-          sc.ui.get.appUIAddress.stripSuffix("/") + "/stages/stage/kill/?id=0")
-        // SPARK-6846: should be POST only but YARN AM doesn't proxy POST
-        TestUtils.httpResponseCode(url, "GET") should be (200)
-        TestUtils.httpResponseCode(url, "POST") should be (200)
-      }
+    def getResponseCode(url: URL, method: String): Int = {
+      val connection = url.openConnection().asInstanceOf[HttpURLConnection]
+      connection.setRequestMethod(method)
+      connection.connect()
+      val code = connection.getResponseCode()
+      connection.disconnect()
+      code
     }
-  }
 
-  test("kill job POST/GET response is correct") {
     withSpark(newSparkContext(killEnabled = true)) { sc =>
       sc.parallelize(1 to 10).map{x => Thread.sleep(10000); x}.countAsync()
       eventually(timeout(5 seconds), interval(50 milliseconds)) {
         val url = new URL(
-          sc.ui.get.appUIAddress.stripSuffix("/") + "/jobs/job/kill/?id=0")
+          sc.ui.get.appUIAddress.stripSuffix("/") + "/stages/stage/kill/?id=0&terminate=true")
         // SPARK-6846: should be POST only but YARN AM doesn't proxy POST
-        TestUtils.httpResponseCode(url, "GET") should be (200)
-        TestUtils.httpResponseCode(url, "POST") should be (200)
+        getResponseCode(url, "GET") should be (200)
+        getResponseCode(url, "POST") should be (200)
       }
     }
   }

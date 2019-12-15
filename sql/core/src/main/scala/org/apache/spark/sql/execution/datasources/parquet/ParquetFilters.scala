@@ -27,7 +27,7 @@ import org.apache.spark.sql.types._
 /**
  * Some utility function to convert Spark data source filters to Parquet filters.
  */
-private[parquet] object ParquetFilters {
+private[sql] object ParquetFilters {
 
   private val makeEq: PartialFunction[DataType, (String, Any) => FilterPredicate] = {
     case BooleanType =>
@@ -40,7 +40,6 @@ private[parquet] object ParquetFilters {
       (n: String, v: Any) => FilterApi.eq(floatColumn(n), v.asInstanceOf[java.lang.Float])
     case DoubleType =>
       (n: String, v: Any) => FilterApi.eq(doubleColumn(n), v.asInstanceOf[java.lang.Double])
-
     // Binary.fromString and Binary.fromByteArray don't accept null values
     case StringType =>
       (n: String, v: Any) => FilterApi.eq(
@@ -63,7 +62,6 @@ private[parquet] object ParquetFilters {
       (n: String, v: Any) => FilterApi.notEq(floatColumn(n), v.asInstanceOf[java.lang.Float])
     case DoubleType =>
       (n: String, v: Any) => FilterApi.notEq(doubleColumn(n), v.asInstanceOf[java.lang.Double])
-
     case StringType =>
       (n: String, v: Any) => FilterApi.notEq(
         binaryColumn(n),
@@ -83,7 +81,6 @@ private[parquet] object ParquetFilters {
       (n: String, v: Any) => FilterApi.lt(floatColumn(n), v.asInstanceOf[java.lang.Float])
     case DoubleType =>
       (n: String, v: Any) => FilterApi.lt(doubleColumn(n), v.asInstanceOf[java.lang.Double])
-
     case StringType =>
       (n: String, v: Any) =>
         FilterApi.lt(binaryColumn(n),
@@ -102,7 +99,6 @@ private[parquet] object ParquetFilters {
       (n: String, v: Any) => FilterApi.ltEq(floatColumn(n), v.asInstanceOf[java.lang.Float])
     case DoubleType =>
       (n: String, v: Any) => FilterApi.ltEq(doubleColumn(n), v.asInstanceOf[java.lang.Double])
-
     case StringType =>
       (n: String, v: Any) =>
         FilterApi.ltEq(binaryColumn(n),
@@ -121,7 +117,6 @@ private[parquet] object ParquetFilters {
       (n: String, v: Any) => FilterApi.gt(floatColumn(n), v.asInstanceOf[java.lang.Float])
     case DoubleType =>
       (n: String, v: Any) => FilterApi.gt(doubleColumn(n), v.asInstanceOf[java.lang.Double])
-
     case StringType =>
       (n: String, v: Any) =>
         FilterApi.gt(binaryColumn(n),
@@ -140,7 +135,6 @@ private[parquet] object ParquetFilters {
       (n: String, v: Any) => FilterApi.gtEq(floatColumn(n), v.asInstanceOf[java.lang.Float])
     case DoubleType =>
       (n: String, v: Any) => FilterApi.gtEq(doubleColumn(n), v.asInstanceOf[java.lang.Double])
-
     case StringType =>
       (n: String, v: Any) =>
         FilterApi.gtEq(binaryColumn(n),
@@ -151,14 +145,23 @@ private[parquet] object ParquetFilters {
   }
 
   /**
-   * Returns a map from name of the column to the data type, if predicate push down applies.
+   * Returns a map from name of the column to the data type, if predicate push down applies
+   * (i.e. not an optional field).
+   *
+   * SPARK-11955: The optional fields will have metadata StructType.metadataKeyForOptionalField.
+   * These fields only exist in one side of merged schemas. Due to that, we can't push down filters
+   * using such fields, otherwise Parquet library will throw exception (PARQUET-389).
+   * Here we filter out such fields.
    */
   private def getFieldMap(dataType: DataType): Map[String, DataType] = dataType match {
     case StructType(fields) =>
       // Here we don't flatten the fields in the nested schema but just look up through
       // root fields. Currently, accessing to nested fields does not push down filters
       // and it does not support to create filters for them.
-      fields.map(f => f.name -> f.dataType).toMap
+      fields.filter { f =>
+        !f.metadata.contains(StructType.metadataKeyForOptionalField) ||
+          !f.metadata.getBoolean(StructType.metadataKeyForOptionalField)
+      }.map(f => f.name -> f.dataType).toMap
     case _ => Map.empty[String, DataType]
   }
 

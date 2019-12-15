@@ -26,7 +26,6 @@ import org.apache.spark.mllib.linalg.{Vector => OldVector, Vectors => OldVectors
 import org.apache.spark.mllib.linalg.VectorImplicits._
 import org.apache.spark.mllib.optimization._
 import org.apache.spark.rdd.RDD
-import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.random.XORShiftRandom
 
 /**
@@ -545,9 +544,7 @@ private[ann] object FeedForwardModel {
    * @return model
    */
   def apply(topology: FeedForwardTopology, weights: Vector): FeedForwardModel = {
-    val expectedWeightSize = topology.layers.map(_.weightSize).sum
-    require(weights.size == expectedWeightSize,
-      s"Expected weight vector of size ${expectedWeightSize} but got size ${weights.size}.")
+    // TODO: check that weights size is equal to sum of layers sizes
     new FeedForwardModel(weights, topology)
   }
 
@@ -561,7 +558,11 @@ private[ann] object FeedForwardModel {
   def apply(topology: FeedForwardTopology, seed: Long = 11L): FeedForwardModel = {
     val layers = topology.layers
     val layerModels = new Array[LayerModel](layers.length)
-    val weights = BDV.zeros[Double](topology.layers.map(_.weightSize).sum)
+    var totalSize = 0
+    for (i <- 0 until topology.layers.length) {
+      totalSize += topology.layers(i).weightSize
+    }
+    val weights = BDV.zeros[Double](totalSize)
     var offset = 0
     val random = new XORShiftRandom(seed)
     for (i <- 0 until layers.length) {
@@ -809,13 +810,9 @@ private[ml] class FeedForwardTrainer(
       getWeights
     }
     // TODO: deprecate standard optimizer because it needs Vector
-    val trainData = dataStacker.stack(data).map { v =>
+    val newWeights = optimizer.optimize(dataStacker.stack(data).map { v =>
       (v._1, OldVectors.fromML(v._2))
-    }
-    val handlePersistence = trainData.getStorageLevel == StorageLevel.NONE
-    if (handlePersistence) trainData.persist(StorageLevel.MEMORY_AND_DISK)
-    val newWeights = optimizer.optimize(trainData, w)
-    if (handlePersistence) trainData.unpersist()
+    }, w)
     topology.model(newWeights)
   }
 

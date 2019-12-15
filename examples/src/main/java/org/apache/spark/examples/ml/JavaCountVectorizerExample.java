@@ -61,7 +61,7 @@ public class JavaCountVectorizerExample {
       .setInputCol("text")
       .setOutputCol("feature");
 
-    cvModel.transform(df).show(false);
+    cvModel.transform(df).show();
     // $example off$
 
     spark.stop();

@@ -19,7 +19,6 @@ package org.apache.spark.sql.catalyst
 
 import java.beans.{Introspector, PropertyDescriptor}
 import java.lang.{Iterable => JIterable}
-import java.lang.reflect.Type
 import java.util.{Iterator => JIterator, List => JList, Map => JMap}
 
 import scala.language.existentials
@@ -53,15 +52,6 @@ object JavaTypeInference {
    */
   def inferDataType(beanClass: Class[_]): (DataType, Boolean) = {
     inferDataType(TypeToken.of(beanClass))
-  }
-
-  /**
-   * Infers the corresponding SQL data type of a Java type.
-   * @param beanType Java type
-   * @return (SQL data type, nullable)
-   */
-  private[sql] def inferDataType(beanType: Type): (DataType, Boolean) = {
-    inferDataType(TypeToken.of(beanType))
   }
 
   /**
@@ -226,8 +216,6 @@ object JavaTypeInference {
 
       case c if c == classOf[java.lang.String] =>
         Invoke(getPath, "toString", ObjectType(classOf[String]))
-      case c if c == classOf[UTF8String] =>
-        Invoke(getPath, "toString", ObjectType(classOf[String]))
 
       case c if c == classOf[java.math.BigDecimal] =>
         Invoke(getPath, "toJavaBigDecimal", ObjectType(classOf[java.math.BigDecimal]))
@@ -336,11 +324,7 @@ object JavaTypeInference {
    */
   def serializerFor(beanClass: Class[_]): CreateNamedStruct = {
     val inputObject = BoundReference(0, ObjectType(beanClass), nullable = true)
-    val nullSafeInput = AssertNotNull(inputObject, Seq("top level input bean"))
-    serializerFor(nullSafeInput, TypeToken.of(beanClass)) match {
-      case expressions.If(_, _, s: CreateNamedStruct) => s
-      case other => CreateNamedStruct(expressions.Literal("value") :: other :: Nil)
-    }
+    serializerFor(inputObject, TypeToken.of(beanClass)).asInstanceOf[CreateNamedStruct]
   }
 
   private def serializerFor(inputObject: Expression, typeToken: TypeToken[_]): Expression = {
@@ -403,8 +387,6 @@ object JavaTypeInference {
           Invoke(inputObject, "floatValue", FloatType)
         case c if c == classOf[java.lang.Double] =>
           Invoke(inputObject, "doubleValue", DoubleType)
-        case c if c == classOf[UTF8String] =>
-          Invoke(inputObject, "cloneIfRequired", StringType)
 
         case _ if typeToken.isArray =>
           toCatalystArray(inputObject, typeToken.getComponentType)
@@ -425,7 +407,7 @@ object JavaTypeInference {
         case other =>
           val properties = getJavaBeanProperties(other)
           if (properties.length > 0) {
-            val nonNullOutput = CreateNamedStruct(properties.flatMap { p =>
+            CreateNamedStruct(properties.flatMap { p =>
               val fieldName = p.getName
               val fieldType = typeToken.method(p.getReadMethod).getReturnType
               val fieldValue = Invoke(
@@ -434,9 +416,6 @@ object JavaTypeInference {
                 inferExternalType(fieldType.getRawType))
               expressions.Literal(fieldName) :: serializerFor(fieldValue, fieldType) :: Nil
             })
-
-            val nullOutput = expressions.Literal.create(null, nonNullOutput.dataType)
-            expressions.If(IsNull(inputObject), nullOutput, nonNullOutput)
           } else {
             throw new UnsupportedOperationException(
               s"Cannot infer type for class ${other.getName} because it is not bean-compliant")

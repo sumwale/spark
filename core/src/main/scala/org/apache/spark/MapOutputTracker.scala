@@ -175,8 +175,7 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
     val statuses = mapStatuses.get(shuffleId).orNull
     if (statuses == null) {
       logInfo("Don't have map outputs for shuffle " + shuffleId + ", fetching them")
-      val isDebugEnabled = log.isDebugEnabled
-      val startTime = if (isDebugEnabled) System.currentTimeMillis else 0L
+      val startTime = System.currentTimeMillis
       var fetchedStatuses: Array[MapStatus] = null
       fetching.synchronized {
         // Someone else is fetching it; wait for them to be done
@@ -213,8 +212,8 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
           }
         }
       }
-      if (isDebugEnabled) logDebug(s"Fetching map output statuses for shuffle $shuffleId took " +
-          s"${System.currentTimeMillis - startTime} ms")
+      logDebug(s"Fetching map output statuses for shuffle $shuffleId took " +
+        s"${System.currentTimeMillis - startTime} ms")
 
       if (fetchedStatuses != null) {
         return fetchedStatuses
@@ -323,7 +322,7 @@ private[spark] class MapOutputTrackerMaster(conf: SparkConf,
   if (minSizeForBroadcast > maxRpcMessageSize) {
     val msg = s"spark.shuffle.mapOutput.minSizeForBroadcast ($minSizeForBroadcast bytes) must " +
       s"be <= spark.rpc.message.maxSize ($maxRpcMessageSize bytes) to prevent sending an rpc " +
-      "message that is too large."
+      "message that is to large."
     logError(msg)
     throw new IllegalArgumentException(msg)
   }
@@ -384,7 +383,7 @@ private[spark] class MapOutputTrackerMaster(conf: SparkConf,
 
   /** Register multiple map output information for the given shuffle */
   def registerMapOutputs(shuffleId: Int, statuses: Array[MapStatus], changeEpoch: Boolean = false) {
-    mapStatuses.put(shuffleId, statuses.clone())
+    mapStatuses.put(shuffleId, Array[MapStatus]() ++ statuses)
     if (changeEpoch) {
       incrementEpoch()
     }
@@ -536,7 +535,7 @@ private[spark] class MapOutputTrackerMaster(conf: SparkConf,
             true
           case None =>
             logDebug("cached status not found for : " + shuffleId)
-            statuses = mapStatuses.getOrElse(shuffleId, Array.empty[MapStatus])
+            statuses = mapStatuses.getOrElse(shuffleId, Array[MapStatus]())
             epochGotten = epoch
             false
         }

@@ -18,7 +18,6 @@
 package org.apache.spark.sql.execution.datasources.json
 
 import org.apache.spark.sql.QueryTest
-import org.apache.spark.sql.catalyst.json.JSONOptions
 import org.apache.spark.sql.test.SharedSQLContext
 
 /**

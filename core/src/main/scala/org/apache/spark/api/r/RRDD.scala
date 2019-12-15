@@ -17,7 +17,6 @@
 
 package org.apache.spark.api.r
 
-import java.io.File
 import java.util.{Map => JMap}
 
 import scala.collection.JavaConverters._
@@ -25,7 +24,6 @@ import scala.reflect.ClassTag
 
 import org.apache.spark._
 import org.apache.spark.api.java.{JavaPairRDD, JavaRDD, JavaSparkContext}
-import org.apache.spark.api.python.PythonRDD
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
@@ -128,14 +126,6 @@ private[r] object RRDD {
       sparkConf.setExecutorEnv(name.toString, value.toString)
     }
 
-    if (sparkEnvirMap.containsKey("spark.r.sql.derby.temp.dir") &&
-        System.getProperty("derby.stream.error.file") == null) {
-      // This must be set before SparkContext is instantiated.
-      System.setProperty("derby.stream.error.file",
-                         Seq(sparkEnvirMap.get("spark.r.sql.derby.temp.dir").toString, "derby.log")
-                         .mkString(File.separator))
-    }
-
     val jsc = new JavaSparkContext(sparkConf)
     jars.foreach { jar =>
       jsc.addJar(jar)
@@ -149,17 +139,5 @@ private[r] object RRDD {
    */
   def createRDDFromArray(jsc: JavaSparkContext, arr: Array[Array[Byte]]): JavaRDD[Array[Byte]] = {
     JavaRDD.fromRDD(jsc.sc.parallelize(arr, arr.length))
-  }
-
-  /**
-   * Create an RRDD given a temporary file name. This is used to create RRDD when parallelize is
-   * called on large R objects.
-   *
-   * @param fileName name of temporary file on driver machine
-   * @param parallelism number of slices defaults to 4
-   */
-  def createRDDFromFile(jsc: JavaSparkContext, fileName: String, parallelism: Int):
-  JavaRDD[Array[Byte]] = {
-    PythonRDD.readRDDFromFile(jsc, fileName, parallelism)
   }
 }

@@ -78,8 +78,7 @@ class BinaryClassificationMetrics @Since("1.3.0") (
    * Returns the receiver operating characteristic (ROC) curve,
    * which is an RDD of (false positive rate, true positive rate)
    * with (0.0, 0.0) prepended and (1.0, 1.0) appended to it.
-   * @see <a href="http://en.wikipedia.org/wiki/Receiver_operating_characteristic">
-   * Receiver operating characteristic (Wikipedia)</a>
+   * @see http://en.wikipedia.org/wiki/Receiver_operating_characteristic
    */
   @Since("1.0.0")
   def roc(): RDD[(Double, Double)] = {
@@ -99,8 +98,7 @@ class BinaryClassificationMetrics @Since("1.3.0") (
   /**
    * Returns the precision-recall curve, which is an RDD of (recall, precision),
    * NOT (precision, recall), with (0.0, 1.0) prepended to it.
-   * @see <a href="http://en.wikipedia.org/wiki/Precision_and_recall">
-   * Precision and recall (Wikipedia)</a>
+   * @see http://en.wikipedia.org/wiki/Precision_and_recall
    */
   @Since("1.0.0")
   def pr(): RDD[(Double, Double)] = {
@@ -120,7 +118,7 @@ class BinaryClassificationMetrics @Since("1.3.0") (
    * Returns the (threshold, F-Measure) curve.
    * @param beta the beta factor in F-Measure computation.
    * @return an RDD of (threshold, F-Measure) pairs.
-   * @see <a href="http://en.wikipedia.org/wiki/F1_score">F1 score (Wikipedia)</a>
+   * @see http://en.wikipedia.org/wiki/F1_score
    */
   @Since("1.0.0")
   def fMeasureByThreshold(beta: Double): RDD[(Double, Double)] = createCurve(FMeasure(beta))

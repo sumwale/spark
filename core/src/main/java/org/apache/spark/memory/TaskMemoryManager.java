@@ -53,7 +53,7 @@ import org.apache.spark.util.Utils;
  */
 public class TaskMemoryManager {
 
-  private static final Logger logger = LoggerFactory.getLogger(TaskMemoryManager.class);
+  private final Logger logger = LoggerFactory.getLogger(TaskMemoryManager.class);
 
   /** The number of bits used to address the page table. */
   private static final int PAGE_NUMBER_BITS = 13;
@@ -149,10 +149,8 @@ public class TaskMemoryManager {
             try {
               long released = c.spill(required - got, consumer);
               if (released > 0) {
-                if (logger.isDebugEnabled()) {
-                  logger.debug("Task {} released {} from {} for {}", taskAttemptId,
-                      Utils.bytesToString(released), c, consumer);
-                }
+                logger.debug("Task {} released {} from {} for {}", taskAttemptId,
+                  Utils.bytesToString(released), c, consumer);
                 got += memoryManager.acquireExecutionMemory(required - got, taskAttemptId, mode);
                 if (got >= required) {
                   break;
@@ -172,10 +170,8 @@ public class TaskMemoryManager {
         try {
           long released = consumer.spill(required - got, consumer);
           if (released > 0) {
-            if (logger.isDebugEnabled()) {
-              logger.debug("Task {} released {} from itself ({})", taskAttemptId,
-                  Utils.bytesToString(released), consumer);
-            }
+            logger.debug("Task {} released {} from itself ({})", taskAttemptId,
+              Utils.bytesToString(released), consumer);
             got += memoryManager.acquireExecutionMemory(required - got, taskAttemptId, mode);
           }
         } catch (IOException e) {
@@ -186,10 +182,7 @@ public class TaskMemoryManager {
       }
 
       consumers.add(consumer);
-      if (logger.isDebugEnabled()) {
-        logger.debug("Task {} acquired {} for {}", taskAttemptId,
-            Utils.bytesToString(got), consumer);
-      }
+      logger.debug("Task {} acquired {} for {}", taskAttemptId, Utils.bytesToString(got), consumer);
       return got;
     }
   }
@@ -198,10 +191,7 @@ public class TaskMemoryManager {
    * Release N bytes of execution memory for a MemoryConsumer.
    */
   public void releaseExecutionMemory(long size, MemoryConsumer consumer) {
-    if (logger.isDebugEnabled()) {
-      logger.debug("Task {} release {} from {}", taskAttemptId,
-          Utils.bytesToString(size), consumer);
-    }
+    logger.debug("Task {} release {} from {}", taskAttemptId, Utils.bytesToString(size), consumer);
     memoryManager.releaseExecutionMemory(size, taskAttemptId, consumer.getMode());
   }
 
@@ -243,14 +233,13 @@ public class TaskMemoryManager {
    *
    * Returns `null` if there was not enough memory to allocate the page. May return a page that
    * contains fewer bytes than requested, so callers should verify the size of returned pages.
-   *
-   * @throws TooLargePageException
    */
   public MemoryBlock allocatePage(long size, MemoryConsumer consumer) {
     assert(consumer != null);
     assert(consumer.getMode() == tungstenMemoryMode);
     if (size > MAXIMUM_PAGE_SIZE_BYTES) {
-      throw new TooLargePageException(size);
+      throw new IllegalArgumentException(
+        "Cannot allocate a page with more than " + MAXIMUM_PAGE_SIZE_BYTES + " bytes");
     }
 
     long acquired = acquireExecutionMemory(size, consumer);
@@ -389,18 +378,14 @@ public class TaskMemoryManager {
       for (MemoryConsumer c: consumers) {
         if (c != null && c.getUsed() > 0) {
           // In case of failed task, it's normal to see leaked memory
-          if (logger.isDebugEnabled()) {
-            logger.debug("unreleased " + Utils.bytesToString(c.getUsed()) + " memory from " + c);
-          }
+          logger.warn("leak " + Utils.bytesToString(c.getUsed()) + " memory from " + c);
         }
       }
       consumers.clear();
 
       for (MemoryBlock page : pageTable) {
         if (page != null) {
-          if (logger.isDebugEnabled()) {
-            logger.debug("unreleased page: " + page + " in task " + taskAttemptId);
-          }
+          logger.warn("leak a page: " + page + " in task " + taskAttemptId);
           memoryManager.tungstenMemoryAllocator().free(page);
         }
       }

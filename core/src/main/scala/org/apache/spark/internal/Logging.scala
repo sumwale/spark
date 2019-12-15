@@ -135,8 +135,7 @@ private[spark] trait Logging {
         val replLevel = Option(replLogger.getLevel()).getOrElse(Level.WARN)
         if (replLevel != rootLogger.getEffectiveLevel()) {
           System.err.printf("Setting default log level to \"%s\".\n", replLevel)
-          System.err.println("To adjust logging level use sc.setLogLevel(newLevel). " +
-              "For SparkR, use setLogLevel(newLevel).")
+          System.err.println("To adjust logging level use sc.setLogLevel(newLevel).")
           rootLogger.setLevel(replLevel)
         }
       }

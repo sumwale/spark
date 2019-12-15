@@ -108,7 +108,7 @@ class KafkaCluster(val kafkaParams: Map[String, String]) extends Serializable {
       } else {
         val missing = topicAndPartitions.diff(leaderMap.keySet)
         val err = new Err
-        err += new SparkException(s"Couldn't find leaders for ${missing}")
+        err.append(new SparkException(s"Couldn't find leaders for ${missing}"))
         Left(err)
       }
     }
@@ -139,7 +139,7 @@ class KafkaCluster(val kafkaParams: Map[String, String]) extends Serializable {
         respErrs.foreach { m =>
           val cause = ErrorMapping.exceptionFor(m.errorCode)
           val msg = s"Error getting partition metadata for '${m.topic}'. Does the topic exist?"
-          errs += new SparkException(msg, cause)
+          errs.append(new SparkException(msg, cause))
         }
       }
     }
@@ -205,11 +205,11 @@ class KafkaCluster(val kafkaParams: Map[String, String]) extends Serializable {
                   LeaderOffset(consumer.host, consumer.port, off)
                 }
               } else {
-                errs += new SparkException(
-                  s"Empty offsets for ${tp}, is ${before} before log beginning?")
+                errs.append(new SparkException(
+                  s"Empty offsets for ${tp}, is ${before} before log beginning?"))
               }
             } else {
-              errs += ErrorMapping.exceptionFor(por.error)
+              errs.append(ErrorMapping.exceptionFor(por.error))
             }
           }
         }
@@ -218,7 +218,7 @@ class KafkaCluster(val kafkaParams: Map[String, String]) extends Serializable {
         }
       }
       val missing = topicAndPartitions.diff(result.keySet)
-      errs += new SparkException(s"Couldn't find leader offsets for ${missing}")
+      errs.append(new SparkException(s"Couldn't find leader offsets for ${missing}"))
       Left(errs)
     }
   }
@@ -231,10 +231,7 @@ class KafkaCluster(val kafkaParams: Map[String, String]) extends Serializable {
   // this 0 here indicates api version, in this case the original ZK backed api.
   private def defaultConsumerApiVersion: Short = 0
 
-  /**
-   * Requires Kafka 0.8.1.1 or later.
-   * Defaults to the original ZooKeeper backed API version.
-   */
+  /** Requires Kafka >= 0.8.1.1.  Defaults to the original ZooKeeper backed api version. */
   def getConsumerOffsets(
       groupId: String,
       topicAndPartitions: Set[TopicAndPartition]
@@ -253,10 +250,7 @@ class KafkaCluster(val kafkaParams: Map[String, String]) extends Serializable {
     }
   }
 
-  /**
-   * Requires Kafka 0.8.1.1 or later.
-   * Defaults to the original ZooKeeper backed API version.
-   */
+  /** Requires Kafka >= 0.8.1.1.  Defaults to the original ZooKeeper backed api version. */
   def getConsumerOffsetMetadata(
       groupId: String,
       topicAndPartitions: Set[TopicAndPartition]
@@ -280,7 +274,7 @@ class KafkaCluster(val kafkaParams: Map[String, String]) extends Serializable {
           if (ome.error == ErrorMapping.NoError) {
             result += tp -> ome
           } else {
-            errs += ErrorMapping.exceptionFor(ome.error)
+            errs.append(ErrorMapping.exceptionFor(ome.error))
           }
         }
       }
@@ -289,14 +283,11 @@ class KafkaCluster(val kafkaParams: Map[String, String]) extends Serializable {
       }
     }
     val missing = topicAndPartitions.diff(result.keySet)
-    errs += new SparkException(s"Couldn't find consumer offsets for ${missing}")
+    errs.append(new SparkException(s"Couldn't find consumer offsets for ${missing}"))
     Left(errs)
   }
 
-  /**
-   * Requires Kafka 0.8.1.1 or later.
-   * Defaults to the original ZooKeeper backed API version.
-   */
+  /** Requires Kafka >= 0.8.1.1.  Defaults to the original ZooKeeper backed api version. */
   def setConsumerOffsets(
       groupId: String,
       offsets: Map[TopicAndPartition, Long]
@@ -314,10 +305,7 @@ class KafkaCluster(val kafkaParams: Map[String, String]) extends Serializable {
     setConsumerOffsetMetadata(groupId, meta, consumerApiVersion)
   }
 
-  /**
-   * Requires Kafka 0.8.1.1 or later.
-   * Defaults to the original ZooKeeper backed API version.
-   */
+  /** Requires Kafka >= 0.8.1.1.  Defaults to the original ZooKeeper backed api version. */
   def setConsumerOffsetMetadata(
       groupId: String,
       metadata: Map[TopicAndPartition, OffsetAndMetadata]
@@ -342,7 +330,7 @@ class KafkaCluster(val kafkaParams: Map[String, String]) extends Serializable {
           if (err == ErrorMapping.NoError) {
             result += tp -> err
           } else {
-            errs += ErrorMapping.exceptionFor(err)
+            errs.append(ErrorMapping.exceptionFor(err))
           }
         }
       }
@@ -351,7 +339,7 @@ class KafkaCluster(val kafkaParams: Map[String, String]) extends Serializable {
       }
     }
     val missing = topicAndPartitions.diff(result.keySet)
-    errs += new SparkException(s"Couldn't set offsets for ${missing}")
+    errs.append(new SparkException(s"Couldn't set offsets for ${missing}"))
     Left(errs)
   }
 
@@ -365,7 +353,7 @@ class KafkaCluster(val kafkaParams: Map[String, String]) extends Serializable {
         fn(consumer)
       } catch {
         case NonFatal(e) =>
-          errs += e
+          errs.append(e)
       } finally {
         if (consumer != null) {
           consumer.close()

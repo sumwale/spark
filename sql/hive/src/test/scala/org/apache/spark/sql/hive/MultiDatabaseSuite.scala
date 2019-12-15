@@ -29,7 +29,7 @@ class MultiDatabaseSuite extends QueryTest with SQLTestUtils with TestHiveSingle
     val expectedPath =
       spark.sharedState.externalCatalog.getDatabase(dbName).locationUri + "/" + tableName
 
-    assert(metastoreTable.location === expectedPath)
+    assert(metastoreTable.storage.properties("path") === expectedPath)
   }
 
   private def getTableNames(dbName: Option[String] = None): Array[String] = {
@@ -269,17 +269,17 @@ class MultiDatabaseSuite extends QueryTest with SQLTestUtils with TestHiveSingle
       val message = intercept[AnalysisException] {
         df.write.format("parquet").saveAsTable("`d:b`.`t:a`")
       }.getMessage
-      assert(message.contains("Database 'd:b' not found"))
+      assert(message.contains("is not a valid name for metastore"))
     }
 
     {
       val message = intercept[AnalysisException] {
         df.write.format("parquet").saveAsTable("`d:b`.`table`")
       }.getMessage
-      assert(message.contains("Database 'd:b' not found"))
+      assert(message.contains("is not a valid name for metastore"))
     }
 
-    withTempDir { dir =>
+    withTempPath { dir =>
       val path = dir.getCanonicalPath
 
       {
@@ -293,8 +293,7 @@ class MultiDatabaseSuite extends QueryTest with SQLTestUtils with TestHiveSingle
             |)
             """.stripMargin)
         }.getMessage
-        assert(message.contains("`t:a` is not a valid name for tables/databases. " +
-          "Valid names only contain alphabet characters, numbers and _."))
+        assert(message.contains("is not a valid name for metastore"))
       }
 
       {
@@ -308,7 +307,7 @@ class MultiDatabaseSuite extends QueryTest with SQLTestUtils with TestHiveSingle
               |)
               """.stripMargin)
         }.getMessage
-        assert(message.contains("Database 'd:b' not found"))
+        assert(message.contains("is not a valid name for metastore"))
       }
     }
   }

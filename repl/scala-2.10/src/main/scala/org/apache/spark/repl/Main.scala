@@ -22,7 +22,6 @@ import org.apache.spark.internal.Logging
 object Main extends Logging {
 
   initializeLogIfNecessary(true)
-  Signaling.cancelOnInterrupt()
 
   private var _interp: SparkILoop = _
 

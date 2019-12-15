@@ -51,7 +51,7 @@ import org.apache.spark.util.random.{SamplingUtils, XORShiftRandom}
  * findSplits() method during initialization, after which each continuous feature becomes
  * an ordered discretized feature with at most maxBins possible values.
  *
- * The main loop in the algorithm operates on a queue of nodes (nodeStack).  These nodes
+ * The main loop in the algorithm operates on a queue of nodes (nodeQueue).  These nodes
  * lie at the periphery of the tree being trained.  If multiple trees are being trained at once,
  * then this queue contains nodes from all of them.  Each iteration works roughly as follows:
  *   On the master node:
@@ -82,7 +82,7 @@ private[spark] object RandomForest extends Logging {
   /**
    * Train a random forest.
    *
-   * @param input Training data: RDD of `LabeledPoint`
+   * @param input Training data: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]]
    * @return an unweighted set of trees
    */
   def run(
@@ -161,42 +161,31 @@ private[spark] object RandomForest extends Logging {
       None
     }
 
-    /*
-      Stack of nodes to train: (treeIndex, node)
-      The reason this is a stack is that we train many trees at once, but we want to focus on
-      completing trees, rather than training all simultaneously.  If we are splitting nodes from
-      1 tree, then the new nodes to split will be put at the top of this stack, so we will continue
-      training the same tree in the next iteration.  This focus allows us to send fewer trees to
-      workers on each iteration; see topNodesForGroup below.
-     */
-    val nodeStack = new mutable.Stack[(Int, LearningNode)]
+    // FIFO queue of nodes to train: (treeIndex, node)
+    val nodeQueue = new mutable.Queue[(Int, LearningNode)]()
 
     val rng = new Random()
     rng.setSeed(seed)
 
     // Allocate and queue root nodes.
     val topNodes = Array.fill[LearningNode](numTrees)(LearningNode.emptyNode(nodeIndex = 1))
-    Range(0, numTrees).foreach(treeIndex => nodeStack.push((treeIndex, topNodes(treeIndex))))
+    Range(0, numTrees).foreach(treeIndex => nodeQueue.enqueue((treeIndex, topNodes(treeIndex))))
 
     timer.stop("init")
 
-    while (nodeStack.nonEmpty) {
+    while (nodeQueue.nonEmpty) {
       // Collect some nodes to split, and choose features for each node (if subsampling).
       // Each group of nodes may come from one or multiple trees, and at multiple levels.
       val (nodesForGroup, treeToNodeToIndexInfo) =
-        RandomForest.selectNodesToSplit(nodeStack, maxMemoryUsage, metadata, rng)
+        RandomForest.selectNodesToSplit(nodeQueue, maxMemoryUsage, metadata, rng)
       // Sanity check (should never occur):
       assert(nodesForGroup.nonEmpty,
         s"RandomForest selected empty nodesForGroup.  Error for unknown reason.")
 
-      // Only send trees to worker if they contain nodes being split this iteration.
-      val topNodesForGroup: Map[Int, LearningNode] =
-        nodesForGroup.keys.map(treeIdx => treeIdx -> topNodes(treeIdx)).toMap
-
       // Choose node splits, and enqueue new nodes as needed.
       timer.start("findBestSplits")
-      RandomForest.findBestSplits(baggedInput, metadata, topNodesForGroup, nodesForGroup,
-        treeToNodeToIndexInfo, splits, nodeStack, timer, nodeIdCache)
+      RandomForest.findBestSplits(baggedInput, metadata, topNodes, nodesForGroup,
+        treeToNodeToIndexInfo, splits, nodeQueue, timer, nodeIdCache)
       timer.stop("findBestSplits")
     }
 
@@ -343,16 +332,15 @@ private[spark] object RandomForest extends Logging {
   /**
    * Given a group of nodes, this finds the best split for each node.
    *
-   * @param input Training data: RDD of [[TreePoint]]
+   * @param input Training data: RDD of [[org.apache.spark.ml.tree.impl.TreePoint]]
    * @param metadata Learning and dataset metadata
-   * @param topNodesForGroup For each tree in group, tree index -> root node.
-   *                         Used for matching instances with nodes.
+   * @param topNodes Root node for each tree.  Used for matching instances with nodes.
    * @param nodesForGroup Mapping: treeIndex --> nodes to be split in tree
    * @param treeToNodeToIndexInfo Mapping: treeIndex --> nodeIndex --> nodeIndexInfo,
    *                              where nodeIndexInfo stores the index in the group and the
    *                              feature subsets (if using feature subsets).
    * @param splits possible splits for all features, indexed (numFeatures)(numSplits)
-   * @param nodeStack  Queue of nodes to split, with values (treeIndex, node).
+   * @param nodeQueue  Queue of nodes to split, with values (treeIndex, node).
    *                   Updated with new non-leaf nodes which are created.
    * @param nodeIdCache Node Id cache containing an RDD of Array[Int] where
    *                    each value in the array is the data point's node Id
@@ -363,11 +351,11 @@ private[spark] object RandomForest extends Logging {
   private[tree] def findBestSplits(
       input: RDD[BaggedPoint[TreePoint]],
       metadata: DecisionTreeMetadata,
-      topNodesForGroup: Map[Int, LearningNode],
+      topNodes: Array[LearningNode],
       nodesForGroup: Map[Int, Array[LearningNode]],
       treeToNodeToIndexInfo: Map[Int, Map[Int, NodeIndexInfo]],
       splits: Array[Array[Split]],
-      nodeStack: mutable.Stack[(Int, LearningNode)],
+      nodeQueue: mutable.Queue[(Int, LearningNode)],
       timer: TimeTracker = new TimeTracker,
       nodeIdCache: Option[NodeIdCache] = None): Unit = {
 
@@ -449,8 +437,7 @@ private[spark] object RandomForest extends Logging {
         agg: Array[DTStatsAggregator],
         baggedPoint: BaggedPoint[TreePoint]): Array[DTStatsAggregator] = {
       treeToNodeToIndexInfo.foreach { case (treeIndex, nodeIndexToInfo) =>
-        val nodeIndex =
-          topNodesForGroup(treeIndex).predictImpl(baggedPoint.datum.binnedFeatures, splits)
+        val nodeIndex = topNodes(treeIndex).predictImpl(baggedPoint.datum.binnedFeatures, splits)
         nodeBinSeqOp(treeIndex, nodeIndexToInfo.getOrElse(nodeIndex, null), agg, baggedPoint)
       }
       agg
@@ -606,10 +593,10 @@ private[spark] object RandomForest extends Logging {
 
           // enqueue left child and right child if they are not leaves
           if (!leftChildIsLeaf) {
-            nodeStack.push((treeIndex, node.leftChild.get))
+            nodeQueue.enqueue((treeIndex, node.leftChild.get))
           }
           if (!rightChildIsLeaf) {
-            nodeStack.push((treeIndex, node.rightChild.get))
+            nodeQueue.enqueue((treeIndex, node.rightChild.get))
           }
 
           logDebug("leftChildIndex = " + node.leftChild.get.id +
@@ -705,17 +692,14 @@ private[spark] object RandomForest extends Logging {
       node.stats
     }
 
-    val validFeatureSplits =
-      Range(0, binAggregates.metadata.numFeaturesPerNode).view.map { featureIndexIdx =>
-        featuresForNode.map(features => (featureIndexIdx, features(featureIndexIdx)))
-          .getOrElse((featureIndexIdx, featureIndexIdx))
-      }.withFilter { case (_, featureIndex) =>
-        binAggregates.metadata.numSplits(featureIndex) != 0
-      }
-
     // For each (feature, split), calculate the gain, and select the best (feature, split).
     val (bestSplit, bestSplitStats) =
-      validFeatureSplits.map { case (featureIndexIdx, featureIndex) =>
+      Range(0, binAggregates.metadata.numFeaturesPerNode).map { featureIndexIdx =>
+        val featureIndex = if (featuresForNode.nonEmpty) {
+          featuresForNode.get.apply(featureIndexIdx)
+        } else {
+          featureIndexIdx
+        }
         val numSplits = binAggregates.metadata.numSplits(featureIndex)
         if (binAggregates.metadata.isContinuous(featureIndex)) {
           // Cumulative sum (scanLeft) of bin statistics.
@@ -854,10 +838,10 @@ private[spark] object RandomForest extends Logging {
    *       and for multiclass classification with a high-arity feature,
    *       there is one bin per category.
    *
-   * @param input Training data: RDD of [[LabeledPoint]]
+   * @param input Training data: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]]
    * @param metadata Learning and dataset metadata
    * @param seed random seed
-   * @return Splits, an Array of [[Split]]
+   * @return Splits, an Array of [[org.apache.spark.mllib.tree.model.Split]]
    *          of size (numFeatures, numSplits)
    */
   protected[tree] def findSplits(
@@ -969,7 +953,7 @@ private[spark] object RandomForest extends Logging {
    *                 NOTE: `metadata.numbins` will be changed accordingly
    *                       if there are not enough splits to be found
    * @param featureIndex feature index to find splits
-   * @return array of split thresholds
+   * @return array of splits
    */
   private[tree] def findSplitsForContinuousFeature(
       featureSamples: Iterable[Double],
@@ -978,9 +962,7 @@ private[spark] object RandomForest extends Logging {
     require(metadata.isContinuous(featureIndex),
       "findSplitsForContinuousFeature can only be used to find splits for a continuous feature.")
 
-    val splits = if (featureSamples.isEmpty) {
-      Array.empty[Double]
-    } else {
+    val splits = {
       val numSplits = metadata.numSplits(featureIndex)
 
       // get count for each distinct value
@@ -992,9 +974,9 @@ private[spark] object RandomForest extends Logging {
       val valueCounts = valueCountMap.toSeq.sortBy(_._1).toArray
 
       // if possible splits is not enough or just enough, just return all possible splits
-      val possibleSplits = valueCounts.length - 1
+      val possibleSplits = valueCounts.length
       if (possibleSplits <= numSplits) {
-        valueCounts.map(_._1).init
+        valueCounts.map(_._1)
       } else {
         // stride between splits
         val stride: Double = numSamples.toDouble / (numSplits + 1)
@@ -1028,6 +1010,12 @@ private[spark] object RandomForest extends Logging {
         splitsBuilder.result()
       }
     }
+
+    // TODO: Do not fail; just ignore the useless feature.
+    assert(splits.length > 0,
+      s"DecisionTree could not handle feature $featureIndex since it had only 1 unique value." +
+        "  Please remove this feature and then try again.")
+
     splits
   }
 
@@ -1041,7 +1029,7 @@ private[spark] object RandomForest extends Logging {
    * will be needed; this allows an adaptive number of nodes since different nodes may require
    * different amounts of memory (if featureSubsetStrategy is not "all").
    *
-   * @param nodeStack  Queue of nodes to split.
+   * @param nodeQueue  Queue of nodes to split.
    * @param maxMemoryUsage  Bound on size of aggregate statistics.
    * @return  (nodesForGroup, treeToNodeToIndexInfo).
    *          nodesForGroup holds the nodes to split: treeIndex --> nodes in tree.
@@ -1053,7 +1041,7 @@ private[spark] object RandomForest extends Logging {
    *          The feature indices are None if not subsampling features.
    */
   private[tree] def selectNodesToSplit(
-      nodeStack: mutable.Stack[(Int, LearningNode)],
+      nodeQueue: mutable.Queue[(Int, LearningNode)],
       maxMemoryUsage: Long,
       metadata: DecisionTreeMetadata,
       rng: Random): (Map[Int, Array[LearningNode]], Map[Int, Map[Int, NodeIndexInfo]]) = {
@@ -1066,8 +1054,8 @@ private[spark] object RandomForest extends Logging {
     var numNodesInGroup = 0
     // If maxMemoryInMB is set very small, we want to still try to split 1 node,
     // so we allow one iteration if memUsage == 0.
-    while (nodeStack.nonEmpty && (memUsage < maxMemoryUsage || memUsage == 0)) {
-      val (treeIndex, node) = nodeStack.top
+    while (nodeQueue.nonEmpty && (memUsage < maxMemoryUsage || memUsage == 0)) {
+      val (treeIndex, node) = nodeQueue.head
       // Choose subset of features for node (if subsampling).
       val featureSubset: Option[Array[Int]] = if (metadata.subsamplingFeatures) {
         Some(SamplingUtils.reservoirSampleAndCount(Range(0,
@@ -1078,7 +1066,7 @@ private[spark] object RandomForest extends Logging {
       // Check if enough memory remains to add this node to the group.
       val nodeMemUsage = RandomForest.aggregateSizeForNode(metadata, featureSubset) * 8L
       if (memUsage + nodeMemUsage <= maxMemoryUsage || memUsage == 0) {
-        nodeStack.pop()
+        nodeQueue.dequeue()
         mutableNodesForGroup.getOrElseUpdate(treeIndex, new mutable.ArrayBuffer[LearningNode]()) +=
           node
         mutableTreeToNodeToIndexInfo
@@ -1121,4 +1109,5 @@ private[spark] object RandomForest extends Logging {
       3 * totalBins
     }
   }
+
 }

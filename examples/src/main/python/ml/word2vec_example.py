@@ -41,9 +41,8 @@ if __name__ == "__main__":
     model = word2Vec.fit(documentDF)
 
     result = model.transform(documentDF)
-    for row in result.collect():
-        text, vector = row
-        print("Text: [%s] => \nVector: %s\n" % (", ".join(text), str(vector)))
+    for feature in result.select("result").take(3):
+        print(feature)
     # $example off$
 
     spark.stop()

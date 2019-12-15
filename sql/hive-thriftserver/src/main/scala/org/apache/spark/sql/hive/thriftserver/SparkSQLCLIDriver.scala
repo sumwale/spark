@@ -189,11 +189,7 @@ private[hive] object SparkSQLCLIDriver extends Logging {
     try {
       if (new File(historyDirectory).exists()) {
         val historyFile = historyDirectory + File.separator + ".hivehistory"
-        // skip doInit to enable setting max-size before load
-        val history = new FileHistory(new File(historyFile), false)
-        history.setMaxSize(50000)
-        history.load()
-        reader.setHistory(history)
+        reader.setHistory(new FileHistory(new File(historyFile)))
       } else {
         logWarning("WARNING: Directory for Hive history file: " + historyDirectory +
                            " does not exist.   History will not be available during this session.")
@@ -293,10 +289,6 @@ private[hive] class SparkSQLCLIDriver extends CliDriver with Logging {
   } else {
     // Hive 1.2 + not supported in CLI
     throw new RuntimeException("Remote operations not supported")
-  }
-
-  override def setHiveVariables(hiveVariables: java.util.Map[String, String]): Unit = {
-    hiveVariables.asScala.foreach(kv => SparkSQLEnv.sqlContext.conf.setConfString(kv._1, kv._2))
   }
 
   override def processCmd(cmd: String): Int = {

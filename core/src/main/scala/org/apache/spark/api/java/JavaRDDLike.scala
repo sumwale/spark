@@ -47,8 +47,7 @@ private[spark] abstract class AbstractJavaRDDLike[T, This <: JavaRDDLike[T, This
 
 /**
  * Defines operations common to several Java RDD implementations.
- *
- * @note This trait is not intended to be implemented by user code.
+ * Note that this trait is not intended to be implemented by user code.
  */
 trait JavaRDDLike[T, This <: JavaRDDLike[T, This]] extends Serializable {
   def wrapRDD(rdd: RDD[T]): This

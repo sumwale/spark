@@ -18,7 +18,6 @@
 package org.apache.spark.sql.catalyst.optimizer
 
 import org.apache.spark.sql.Row
-import org.apache.spark.sql.catalyst.SimpleCatalystConf
 import org.apache.spark.sql.catalyst.dsl.expressions._
 import org.apache.spark.sql.catalyst.dsl.plans._
 import org.apache.spark.sql.catalyst.plans._
@@ -34,7 +33,7 @@ class PropagateEmptyRelationSuite extends PlanTest {
         ReplaceExceptWithAntiJoin,
         ReplaceIntersectWithSemiJoin,
         PushDownPredicate,
-        PruneFilters(SimpleCatalystConf(caseSensitiveAnalysis = true)),
+        PruneFilters,
         PropagateEmptyRelation) :: Nil
   }
 
@@ -46,7 +45,7 @@ class PropagateEmptyRelationSuite extends PlanTest {
         ReplaceExceptWithAntiJoin,
         ReplaceIntersectWithSemiJoin,
         PushDownPredicate,
-        PruneFilters(SimpleCatalystConf(caseSensitiveAnalysis = true))) :: Nil
+        PruneFilters) :: Nil
   }
 
   val testRelation1 = LocalRelation.fromExternalRows(Seq('a.int), data = Seq(Row(1)))
@@ -68,7 +67,6 @@ class PropagateEmptyRelationSuite extends PlanTest {
     // Note that `None` is used to compare with OptimizeWithoutPropagateEmptyRelation.
     val testcases = Seq(
       (true, true, Inner, None),
-      (true, true, Cross, None),
       (true, true, LeftOuter, None),
       (true, true, RightOuter, None),
       (true, true, FullOuter, None),
@@ -76,7 +74,6 @@ class PropagateEmptyRelationSuite extends PlanTest {
       (true, true, LeftSemi, None),
 
       (true, false, Inner, Some(LocalRelation('a.int, 'b.int))),
-      (true, false, Cross, Some(LocalRelation('a.int, 'b.int))),
       (true, false, LeftOuter, None),
       (true, false, RightOuter, Some(LocalRelation('a.int, 'b.int))),
       (true, false, FullOuter, None),
@@ -84,7 +81,6 @@ class PropagateEmptyRelationSuite extends PlanTest {
       (true, false, LeftSemi, None),
 
       (false, true, Inner, Some(LocalRelation('a.int, 'b.int))),
-      (false, true, Cross, Some(LocalRelation('a.int, 'b.int))),
       (false, true, LeftOuter, Some(LocalRelation('a.int, 'b.int))),
       (false, true, RightOuter, None),
       (false, true, FullOuter, None),
@@ -92,7 +88,6 @@ class PropagateEmptyRelationSuite extends PlanTest {
       (false, true, LeftSemi, Some(LocalRelation('a.int))),
 
       (false, false, Inner, Some(LocalRelation('a.int, 'b.int))),
-      (false, false, Cross, Some(LocalRelation('a.int, 'b.int))),
       (false, false, LeftOuter, Some(LocalRelation('a.int, 'b.int))),
       (false, false, RightOuter, Some(LocalRelation('a.int, 'b.int))),
       (false, false, FullOuter, Some(LocalRelation('a.int, 'b.int))),

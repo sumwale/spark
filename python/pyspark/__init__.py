@@ -50,7 +50,6 @@ from pyspark.broadcast import Broadcast
 from pyspark.serializers import MarshalSerializer, PickleSerializer
 from pyspark.status import *
 from pyspark.profiler import Profiler, BasicProfiler
-from pyspark.version import __version__
 
 
 def since(version):
@@ -90,15 +89,13 @@ def keyword_only(func):
     """
     A decorator that forces keyword arguments in the wrapped method
     and saves actual input keyword arguments in `_input_kwargs`.
-
-    .. note:: Should only be used to wrap a method where first arg is `self`
     """
     @wraps(func)
-    def wrapper(self, *args, **kwargs):
-        if len(args) > 0:
+    def wrapper(*args, **kwargs):
+        if len(args) > 1:
             raise TypeError("Method %s forces keyword arguments." % func.__name__)
-        self._input_kwargs = kwargs
-        return func(self, **kwargs)
+        wrapper._input_kwargs = kwargs
+        return func(*args, **kwargs)
     return wrapper
 
 

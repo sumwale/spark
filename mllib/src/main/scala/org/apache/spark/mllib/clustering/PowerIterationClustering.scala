@@ -36,7 +36,7 @@ import org.apache.spark.util.random.XORShiftRandom
  * Model produced by [[PowerIterationClustering]].
  *
  * @param k number of clusters
- * @param assignments an RDD of clustering `PowerIterationClustering#Assignment`s
+ * @param assignments an RDD of clustering [[PowerIterationClustering#Assignment]]s
  */
 @Since("1.3.0")
 class PowerIterationClusteringModel @Since("1.3.0") (
@@ -103,9 +103,9 @@ object PowerIterationClusteringModel extends Loader[PowerIterationClusteringMode
 
 /**
  * Power Iteration Clustering (PIC), a scalable graph clustering algorithm developed by
- * <a href="http://www.icml2010.org/papers/387.pdf">Lin and Cohen</a>. From the abstract: PIC finds
- * a very low-dimensional embedding of a dataset using truncated power iteration on a normalized
- * pair-wise similarity matrix of the data.
+ * [[http://www.icml2010.org/papers/387.pdf Lin and Cohen]]. From the abstract: PIC finds a very
+ * low-dimensional embedding of a dataset using truncated power iteration on a normalized pair-wise
+ * similarity matrix of the data.
  *
  * @param k Number of clusters.
  * @param maxIterations Maximum number of iterations of the PIC algorithm.
@@ -113,8 +113,7 @@ object PowerIterationClusteringModel extends Loader[PowerIterationClusteringMode
  *                 as vertex properties, or "degree" to use normalized sum similarities.
  *                 Default: random.
  *
- * @see <a href="http://en.wikipedia.org/wiki/Spectral_clustering">
- * Spectral clustering (Wikipedia)</a>
+ * @see [[http://en.wikipedia.org/wiki/Spectral_clustering Spectral clustering (Wikipedia)]]
  */
 @Since("1.3.0")
 class PowerIterationClustering private[clustering] (
@@ -211,7 +210,7 @@ class PowerIterationClustering private[clustering] (
   }
 
   /**
-   * A Java-friendly version of `PowerIterationClustering.run`.
+   * A Java-friendly version of [[PowerIterationClustering.run]].
    */
   @Since("1.3.0")
   def run(similarities: JavaRDD[(java.lang.Long, java.lang.Long, java.lang.Double)])
@@ -259,7 +258,7 @@ object PowerIterationClustering extends Logging {
         val j = ctx.dstId
         val s = ctx.attr
         if (s < 0.0) {
-          throw new SparkException(s"Similarity must be nonnegative but found s($i, $j) = $s.")
+          throw new SparkException("Similarity must be nonnegative but found s($i, $j) = $s.")
         }
         if (s > 0.0) {
           ctx.sendToSrc(s)
@@ -283,7 +282,7 @@ object PowerIterationClustering extends Logging {
     : Graph[Double, Double] = {
     val edges = similarities.flatMap { case (i, j, s) =>
       if (s < 0.0) {
-        throw new SparkException(s"Similarity must be nonnegative but found s($i, $j) = $s.")
+        throw new SparkException("Similarity must be nonnegative but found s($i, $j) = $s.")
       }
       if (i != j) {
         Seq(Edge(i, j, s), Edge(j, i, s))

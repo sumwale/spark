@@ -39,9 +39,7 @@ import org.slf4j.LoggerFactory;
  */
 public class JavaUtils {
   private static final Logger logger = LoggerFactory.getLogger(JavaUtils.class);
-  private static final Pattern timePattern = Pattern.compile("(-?[0-9]+)([a-zA-Z]+)?");
-  private static final Pattern byteAsStringPattern = Pattern.compile("([0-9]+)([a-zA-Z]+)?");
-  private static final Pattern fractionPattern = Pattern.compile("([0-9]+\\.[0-9]+)([a-zA-Z]+)?");
+
   /**
    * Define a default value for driver memory here since this value is referenced across the code
    * base and nearly all files already use Utils.scala
@@ -210,10 +208,10 @@ public class JavaUtils {
    * The unit is also considered the default if the given string does not specify a unit.
    */
   public static long timeStringAs(String str, TimeUnit unit) {
-    String s = str.trim();
+    String lower = str.toLowerCase().trim();
 
     try {
-      Matcher m = timePattern.matcher(s);
+      Matcher m = Pattern.compile("(-?[0-9]+)([a-z]+)?").matcher(lower);
       if (!m.matches()) {
         throw new NumberFormatException("Failed to parse time string: " + str);
       }
@@ -222,13 +220,12 @@ public class JavaUtils {
       String suffix = m.group(2);
 
       // Check for invalid suffixes
-      TimeUnit target = unit;
-      if (suffix != null && (target = timeSuffixes.get(suffix.toLowerCase())) == null) {
+      if (suffix != null && !timeSuffixes.containsKey(suffix)) {
         throw new NumberFormatException("Invalid suffix: \"" + suffix + "\"");
       }
 
       // If suffix is valid use that, otherwise none was provided and use the default passed
-      return unit.convert(val, target);
+      return unit.convert(val, suffix != null ? timeSuffixes.get(suffix) : unit);
     } catch (NumberFormatException e) {
       String timeError = "Time must be specified as seconds (s), " +
               "milliseconds (ms), microseconds (us), minutes (m or min), hour (h), or day (d). " +
@@ -259,25 +256,24 @@ public class JavaUtils {
    * provided, a direct conversion to the provided unit is attempted.
    */
   public static long byteStringAs(String str, ByteUnit unit) {
-    String s = str.trim();
+    String lower = str.toLowerCase().trim();
 
     try {
-      Matcher m = byteAsStringPattern.matcher(s);
-      Matcher fractionMatcher;
+      Matcher m = Pattern.compile("([0-9]+)([a-z]+)?").matcher(lower);
+      Matcher fractionMatcher = Pattern.compile("([0-9]+\\.[0-9]+)([a-z]+)?").matcher(lower);
 
       if (m.matches()) {
         long val = Long.parseLong(m.group(1));
         String suffix = m.group(2);
 
         // Check for invalid suffixes
-        ByteUnit target = unit;
-        if (suffix != null && (target = byteSuffixes.get(suffix.toLowerCase())) == null) {
+        if (suffix != null && !byteSuffixes.containsKey(suffix)) {
           throw new NumberFormatException("Invalid suffix: \"" + suffix + "\"");
         }
 
         // If suffix is valid use that, otherwise none was provided and use the default passed
-        return unit.convertFrom(val, target);
-      } else if ((fractionMatcher = fractionPattern.matcher(s)).matches()) {
+        return unit.convertFrom(val, suffix != null ? byteSuffixes.get(suffix) : unit);
+      } else if (fractionMatcher.matches()) {
         throw new NumberFormatException("Fractional values are not supported. Input was: "
           + fractionMatcher.group(1));
       } else {

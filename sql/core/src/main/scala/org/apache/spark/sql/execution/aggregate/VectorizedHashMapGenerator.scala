@@ -48,30 +48,28 @@ class VectorizedHashMapGenerator(
   extends HashMapGenerator (ctx, aggregateExpressions, generatedClassName,
     groupingKeySchema, bufferSchema) {
 
-  override protected def initializeAggregateHashMap(): String = {
+  protected def initializeAggregateHashMap(): String = {
     val generatedSchema: String =
       s"new org.apache.spark.sql.types.StructType()" +
         (groupingKeySchema ++ bufferSchema).map { key =>
-          val keyName = ctx.addReferenceObj(key.name)
           key.dataType match {
             case d: DecimalType =>
-              s""".add("$keyName", org.apache.spark.sql.types.DataTypes.createDecimalType(
+              s""".add("${key.name}", org.apache.spark.sql.types.DataTypes.createDecimalType(
                   |${d.precision}, ${d.scale}))""".stripMargin
             case _ =>
-              s""".add("$keyName", org.apache.spark.sql.types.DataTypes.${key.dataType})"""
+              s""".add("${key.name}", org.apache.spark.sql.types.DataTypes.${key.dataType})"""
           }
         }.mkString("\n").concat(";")
 
     val generatedAggBufferSchema: String =
       s"new org.apache.spark.sql.types.StructType()" +
         bufferSchema.map { key =>
-          val keyName = ctx.addReferenceObj(key.name)
           key.dataType match {
             case d: DecimalType =>
-              s""".add("$keyName", org.apache.spark.sql.types.DataTypes.createDecimalType(
+              s""".add("${key.name}", org.apache.spark.sql.types.DataTypes.createDecimalType(
                   |${d.precision}, ${d.scale}))""".stripMargin
             case _ =>
-              s""".add("$keyName", org.apache.spark.sql.types.DataTypes.${key.dataType})"""
+              s""".add("${key.name}", org.apache.spark.sql.types.DataTypes.${key.dataType})"""
           }
         }.mkString("\n").concat(";")
 

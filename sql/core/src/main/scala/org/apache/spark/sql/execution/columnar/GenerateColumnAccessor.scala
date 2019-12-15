@@ -36,7 +36,8 @@ abstract class ColumnarIterator extends Iterator[InternalRow] {
  *
  * WARNING: These setter MUST be called in increasing order of ordinals.
  */
-class MutableUnsafeRow(val writer: UnsafeRowWriter) extends BaseGenericInternalRow {
+class MutableUnsafeRow(val writer: UnsafeRowWriter) extends GenericMutableRow(null) {
+
   override def isNullAt(i: Int): Boolean = writer.isNullAt(i)
   override def setNullAt(i: Int): Unit = writer.setNullAt(i)
 
@@ -54,9 +55,6 @@ class MutableUnsafeRow(val writer: UnsafeRowWriter) extends BaseGenericInternalR
   override def update(i: Int, v: Any): Unit = throw new UnsupportedOperationException
 
   // all other methods inherited from GenericMutableRow are not need
-  override protected def genericGet(ordinal: Int): Any = throw new UnsupportedOperationException
-  override def numFields: Int = throw new UnsupportedOperationException
-  override def copy(): InternalRow = throw new UnsupportedOperationException
 }
 
 /**
@@ -129,7 +127,7 @@ object GenerateColumnAccessor extends CodeGenerator[Seq[DataType], ColumnarItera
         val groupedAccessorsItr = initializeAccessors.grouped(numberOfStatementsThreshold)
         val groupedExtractorsItr = extractors.grouped(numberOfStatementsThreshold)
         var groupedAccessorsLength = 0
-        groupedAccessorsItr.zipWithIndex.foreach { case (body, i) =>
+        groupedAccessorsItr.zipWithIndex.map { case (body, i) =>
           groupedAccessorsLength += 1
           val funcName = s"accessors$i"
           val funcCode = s"""
@@ -139,7 +137,7 @@ object GenerateColumnAccessor extends CodeGenerator[Seq[DataType], ColumnarItera
            """.stripMargin
           ctx.addNewFunction(funcName, funcCode)
         }
-        groupedExtractorsItr.zipWithIndex.foreach { case (body, i) =>
+        groupedExtractorsItr.zipWithIndex.map { case (body, i) =>
           val funcName = s"extractors$i"
           val funcCode = s"""
              |private void $funcName() {

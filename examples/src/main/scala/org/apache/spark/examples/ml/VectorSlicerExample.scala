@@ -37,10 +37,7 @@ object VectorSlicerExample {
       .getOrCreate()
 
     // $example on$
-    val data = Arrays.asList(
-      Row(Vectors.sparse(3, Seq((0, -2.0), (1, 2.3)))),
-      Row(Vectors.dense(-2.0, 2.3, 0.0))
-    )
+    val data = Arrays.asList(Row(Vectors.dense(-2.0, 2.3, 0.0)))
 
     val defaultAttr = NumericAttribute.defaultAttr
     val attrs = Array("f1", "f2", "f3").map(defaultAttr.withName)
@@ -54,7 +51,7 @@ object VectorSlicerExample {
     // or slicer.setIndices(Array(1, 2)), or slicer.setNames(Array("f2", "f3"))
 
     val output = slicer.transform(dataset)
-    output.show(false)
+    println(output.select("userFeatures", "features").first())
     // $example off$
 
     spark.stop()

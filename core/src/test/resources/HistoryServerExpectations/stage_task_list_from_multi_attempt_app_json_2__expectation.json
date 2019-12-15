@@ -15,9 +15,7 @@
   } ],
   "taskMetrics" : {
     "executorDeserializeTime" : 14,
-    "executorDeserializeCpuTime" : 0,
     "executorRunTime" : 15,
-    "executorCpuTime" : 0,
     "resultSize" : 697,
     "jvmGcTime" : 0,
     "resultSerializationTime" : 2,
@@ -62,9 +60,7 @@
   } ],
   "taskMetrics" : {
     "executorDeserializeTime" : 14,
-    "executorDeserializeCpuTime" : 0,
     "executorRunTime" : 15,
-    "executorCpuTime" : 0,
     "resultSize" : 697,
     "jvmGcTime" : 0,
     "resultSerializationTime" : 2,
@@ -109,9 +105,7 @@
   } ],
   "taskMetrics" : {
     "executorDeserializeTime" : 13,
-    "executorDeserializeCpuTime" : 0,
     "executorRunTime" : 15,
-    "executorCpuTime" : 0,
     "resultSize" : 697,
     "jvmGcTime" : 0,
     "resultSerializationTime" : 2,
@@ -156,9 +150,7 @@
   } ],
   "taskMetrics" : {
     "executorDeserializeTime" : 13,
-    "executorDeserializeCpuTime" : 0,
     "executorRunTime" : 15,
-    "executorCpuTime" : 0,
     "resultSize" : 697,
     "jvmGcTime" : 0,
     "resultSerializationTime" : 2,
@@ -203,9 +195,7 @@
   } ],
   "taskMetrics" : {
     "executorDeserializeTime" : 12,
-    "executorDeserializeCpuTime" : 0,
     "executorRunTime" : 15,
-    "executorCpuTime" : 0,
     "resultSize" : 697,
     "jvmGcTime" : 0,
     "resultSerializationTime" : 1,
@@ -250,9 +240,7 @@
   } ],
   "taskMetrics" : {
     "executorDeserializeTime" : 12,
-    "executorDeserializeCpuTime" : 0,
     "executorRunTime" : 15,
-    "executorCpuTime" : 0,
     "resultSize" : 697,
     "jvmGcTime" : 0,
     "resultSerializationTime" : 2,
@@ -297,9 +285,7 @@
   } ],
   "taskMetrics" : {
     "executorDeserializeTime" : 12,
-    "executorDeserializeCpuTime" : 0,
     "executorRunTime" : 15,
-    "executorCpuTime" : 0,
     "resultSize" : 697,
     "jvmGcTime" : 0,
     "resultSerializationTime" : 2,
@@ -344,9 +330,7 @@
   } ],
   "taskMetrics" : {
     "executorDeserializeTime" : 12,
-    "executorDeserializeCpuTime" : 0,
     "executorRunTime" : 15,
-    "executorCpuTime" : 0,
     "resultSize" : 697,
     "jvmGcTime" : 0,
     "resultSerializationTime" : 2,

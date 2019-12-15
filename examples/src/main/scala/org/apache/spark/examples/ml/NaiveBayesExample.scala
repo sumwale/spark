@@ -52,7 +52,7 @@ object NaiveBayesExample {
       .setPredictionCol("prediction")
       .setMetricName("accuracy")
     val accuracy = evaluator.evaluate(predictions)
-    println("Test set accuracy = " + accuracy)
+    println("Accuracy: " + accuracy)
     // $example off$
 
     spark.stop()

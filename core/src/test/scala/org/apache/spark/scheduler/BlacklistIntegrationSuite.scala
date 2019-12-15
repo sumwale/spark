@@ -16,10 +16,10 @@
  */
 package org.apache.spark.scheduler
 
+import scala.concurrent.Await
 import scala.concurrent.duration._
 
 import org.apache.spark._
-import org.apache.spark.internal.config
 
 class BlacklistIntegrationSuite extends SchedulerIntegrationSuite[MultiExecutorMockBackend]{
 
@@ -42,10 +42,7 @@ class BlacklistIntegrationSuite extends SchedulerIntegrationSuite[MultiExecutorM
 
   // Test demonstrating the issue -- without a config change, the scheduler keeps scheduling
   // according to locality preferences, and so the job fails
-  testScheduler("If preferred node is bad, without blacklist job will fail",
-    extraConfs = Seq(
-      config.BLACKLIST_ENABLED.key -> "false"
-  )) {
+  testScheduler("If preferred node is bad, without blacklist job will fail") {
     val rdd = new MockRDDWithLocalityPrefs(sc, 10, Nil, badHost)
     withBackend(badHostBackend _) {
       val jobFuture = submit(rdd, (0 until 10).toArray)
@@ -54,38 +51,37 @@ class BlacklistIntegrationSuite extends SchedulerIntegrationSuite[MultiExecutorM
     assertDataStructuresEmpty(noFailure = false)
   }
 
+  // even with the blacklist turned on, if maxTaskFailures is not more than the number
+  // of executors on the bad node, then locality preferences will lead to us cycling through
+  // the executors on the bad node, and still failing the job
   testScheduler(
-    "With default settings, job can succeed despite multiple bad executors on node",
+    "With blacklist on, job will still fail if there are too many bad executors on bad host",
     extraConfs = Seq(
-      config.BLACKLIST_ENABLED.key -> "true",
-      config.MAX_TASK_FAILURES.key -> "4",
-      "spark.testing.nHosts" -> "2",
-      "spark.testing.nExecutorsPerHost" -> "5",
-      "spark.testing.nCoresPerExecutor" -> "10"
+      // set this to something much longer than the test duration so that executors don't get
+      // removed from the blacklist during the test
+      ("spark.scheduler.executorTaskBlacklistTime", "10000000")
     )
   ) {
-    // To reliably reproduce the failure that would occur without blacklisting, we have to use 1
-    // task.  That way, we ensure this 1 task gets rotated through enough bad executors on the host
-    // to fail the taskSet, before we have a bunch of different tasks fail in the executors so we
-    // blacklist them.
-    // But the point here is -- without blacklisting, we would never schedule anything on the good
-    // host-1 before we hit too many failures trying our preferred host-0.
-    val rdd = new MockRDDWithLocalityPrefs(sc, 1, Nil, badHost)
+    val rdd = new MockRDDWithLocalityPrefs(sc, 10, Nil, badHost)
     withBackend(badHostBackend _) {
-      val jobFuture = submit(rdd, (0 until 1).toArray)
+      val jobFuture = submit(rdd, (0 until 10).toArray)
       awaitJobTermination(jobFuture, duration)
     }
-    assertDataStructuresEmpty(noFailure = true)
+    assertDataStructuresEmpty(noFailure = false)
   }
 
-  // Here we run with the blacklist on, and the default config takes care of having this
-  // robust to one bad node.
+  // Here we run with the blacklist on, and maxTaskFailures high enough that we'll eventually
+  // schedule on a good node and succeed the job
   testScheduler(
     "Bad node with multiple executors, job will still succeed with the right confs",
     extraConfs = Seq(
-       config.BLACKLIST_ENABLED.key -> "true",
+      // set this to something much longer than the test duration so that executors don't get
+      // removed from the blacklist during the test
+      ("spark.scheduler.executorTaskBlacklistTime", "10000000"),
+      // this has to be higher than the number of executors on the bad host
+      ("spark.task.maxFailures", "5"),
       // just to avoid this test taking too long
-      "spark.locality.wait" -> "10ms"
+      ("spark.locality.wait", "10ms")
     )
   ) {
     val rdd = new MockRDDWithLocalityPrefs(sc, 10, Nil, badHost)
@@ -102,7 +98,9 @@ class BlacklistIntegrationSuite extends SchedulerIntegrationSuite[MultiExecutorM
   testScheduler(
     "SPARK-15865 Progress with fewer executors than maxTaskFailures",
     extraConfs = Seq(
-      config.BLACKLIST_ENABLED.key -> "true",
+      // set this to something much longer than the test duration so that executors don't get
+      // removed from the blacklist during the test
+      "spark.scheduler.executorTaskBlacklistTime" -> "10000000",
       "spark.testing.nHosts" -> "2",
       "spark.testing.nExecutorsPerHost" -> "1",
       "spark.testing.nCoresPerExecutor" -> "1"
@@ -114,9 +112,9 @@ class BlacklistIntegrationSuite extends SchedulerIntegrationSuite[MultiExecutorM
     }
     withBackend(runBackend _) {
       val jobFuture = submit(new MockRDD(sc, 10, Nil), (0 until 10).toArray)
-      awaitJobTermination(jobFuture, duration)
+      Await.ready(jobFuture, duration)
       val pattern = ("Aborting TaskSet 0.0 because task .* " +
-        "cannot run anywhere due to node and executor blacklist").r
+        "already failed on executors \\(.*\\), and no other executors are available").r
       assert(pattern.findFirstIn(failure.getMessage).isDefined,
         s"Couldn't find $pattern in ${failure.getMessage()}")
     }

@@ -17,19 +17,13 @@
 
 package org.apache.spark.sql.execution
 
-import scala.concurrent.{ExecutionContext, Future}
-import scala.concurrent.duration.Duration
-
-import org.apache.spark.SparkException
 import org.apache.spark.rdd.{PartitionwiseSampledRDD, RDD}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.{CodegenContext, ExprCode, ExpressionCanonicalizer}
 import org.apache.spark.sql.catalyst.plans.physical._
 import org.apache.spark.sql.execution.metric.SQLMetrics
-import org.apache.spark.sql.execution.ui.SparkListenerDriverAccumUpdates
-import org.apache.spark.sql.types.LongType
-import org.apache.spark.util.ThreadUtils
+import org.apache.spark.sql.types.{LongType, StructField, StructType}
 import org.apache.spark.util.random.{BernoulliCellSampler, PoissonSampler}
 
 /** Physical plan for Project. */
@@ -70,17 +64,14 @@ case class ProjectExec(projectList: Seq[NamedExpression], child: SparkPlan)
   }
 
   protected override def doExecute(): RDD[InternalRow] = {
-    child.execute().mapPartitionsWithIndexInternal { (index, iter) =>
+    child.execute().mapPartitionsInternal { iter =>
       val project = UnsafeProjection.create(projectList, child.output,
         subexpressionEliminationEnabled)
-      project.initialize(index)
       iter.map(project)
     }
   }
 
   override def outputOrdering: Seq[SortOrder] = child.outputOrdering
-
-  override def outputPartitioning: Partitioning = child.outputPartitioning
 }
 
 
@@ -90,13 +81,7 @@ case class FilterExec(condition: Expression, child: SparkPlan)
 
   // Split out all the IsNotNulls from condition.
   private val (notNullPreds, otherPreds) = splitConjunctivePredicates(condition).partition {
-    case IsNotNull(a) => isNullIntolerant(a) && a.references.subsetOf(child.outputSet)
-    case _ => false
-  }
-
-  // If one expression and its children are null intolerant, it is null intolerant.
-  private def isNullIntolerant(expr: Expression): Boolean = expr match {
-    case e: NullIntolerant => e.children.forall(isNullIntolerant)
+    case IsNotNull(a: NullIntolerant) if a.references.subsetOf(child.outputSet) => true
     case _ => false
   }
 
@@ -117,7 +102,7 @@ case class FilterExec(condition: Expression, child: SparkPlan)
     }
   }
 
-  override lazy val metrics = Map(
+  private[sql] override lazy val metrics = Map(
     "numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows"))
 
   override def inputRDDs(): Seq[RDD[InternalRow]] = {
@@ -205,18 +190,17 @@ case class FilterExec(condition: Expression, child: SparkPlan)
     s"""
        |$generated
        |$nullChecks
-       |$numOutput.addLong(1);
+       |$numOutput.add(1);
        |${consume(ctx, resultVars)}
      """.stripMargin
   }
 
   protected override def doExecute(): RDD[InternalRow] = {
     val numOutputRows = longMetric("numOutputRows")
-    child.execute().mapPartitionsWithIndexInternal { (index, iter) =>
+    child.execute().mapPartitionsInternal { iter =>
       val predicate = newPredicate(condition, child.output)
-      predicate.initialize(0)
       iter.filter { row =>
-        val r = predicate.eval(row)
+        val r = predicate(row)
         if (r) numOutputRows += 1
         r
       }
@@ -224,8 +208,6 @@ case class FilterExec(condition: Expression, child: SparkPlan)
   }
 
   override def outputOrdering: Seq[SortOrder] = child.outputOrdering
-
-  override def outputPartitioning: Partitioning = child.outputPartitioning
 }
 
 /**
@@ -246,9 +228,7 @@ case class SampleExec(
     child: SparkPlan) extends UnaryExecNode with CodegenSupport {
   override def output: Seq[Attribute] = child.output
 
-  override def outputPartitioning: Partitioning = child.outputPartitioning
-
-  override lazy val metrics = Map(
+  private[sql] override lazy val metrics = Map(
     "numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows"))
 
   protected override def doExecute(): RDD[InternalRow] = {
@@ -280,7 +260,6 @@ case class SampleExec(
     if (withReplacement) {
       val samplerClass = classOf[PoissonSampler[UnsafeRow]].getName
       val initSampler = ctx.freshName("initSampler")
-      ctx.copyResult = true
       ctx.addMutableState(s"$samplerClass<UnsafeRow>", sampler,
         s"$initSampler();")
 
@@ -303,7 +282,7 @@ case class SampleExec(
       s"""
          | int $samplingCount = $sampler.sample();
          | while ($samplingCount-- > 0) {
-         |   $numOutput.addLong(1);
+         |   $numOutput.add(1);
          |   ${consume(ctx, input)}
          | }
        """.stripMargin.trim
@@ -317,7 +296,7 @@ case class SampleExec(
 
       s"""
          | if ($sampler.sample() == 0) continue;
-         | $numOutput.addLong(1);
+         | $numOutput.add(1);
          | ${consume(ctx, input)}
        """.stripMargin.trim
     }
@@ -333,12 +312,12 @@ case class RangeExec(range: org.apache.spark.sql.catalyst.plans.logical.Range)
 
   def start: Long = range.start
   def step: Long = range.step
-  def numSlices: Int = range.numSlices.getOrElse(sparkContext.defaultParallelism)
+  def numSlices: Int = range.numSlices
   def numElements: BigInt = range.numElements
 
   override val output: Seq[Attribute] = range.output
 
-  override lazy val metrics = Map(
+  private[sql] override lazy val metrics = Map(
     "numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows"))
 
   // output attributes should not affect the results
@@ -398,7 +377,7 @@ case class RangeExec(range: org.apache.spark.sql.catalyst.plans.logical.Range)
         |     $partitionEnd = end.longValue();
         |   }
         |
-        |   $numOutput.addLong(($partitionEnd - $number) / ${step}L);
+        |   $numOutput.add(($partitionEnd - $number) / ${step}L);
         | }
        """.stripMargin)
 
@@ -426,7 +405,6 @@ case class RangeExec(range: org.apache.spark.sql.catalyst.plans.logical.Range)
 
   protected override def doExecute(): RDD[InternalRow] = {
     val numOutputRows = longMetric("numOutputRows")
-    val numSlices = this.numSlices
     sqlContext
       .sparkContext
       .parallelize(0 until numSlices, numSlices)
@@ -496,15 +474,7 @@ case class UnionExec(children: Seq[SparkPlan]) extends SparkPlan {
  * Physical plan for returning a new RDD that has exactly `numPartitions` partitions.
  * Similar to coalesce defined on an [[RDD]], this operation results in a narrow dependency, e.g.
  * if you go from 1000 partitions to 100 partitions, there will not be a shuffle, instead each of
- * the 100 new partitions will claim 10 of the current partitions.  If a larger number of partitions
- * is requested, it will stay at the current number of partitions.
- *
- * However, if you're doing a drastic coalesce, e.g. to numPartitions = 1,
- * this may result in your computation taking place on fewer nodes than
- * you like (e.g. one node in the case of numPartitions = 1). To avoid this,
- * you see ShuffleExchange. This will add a shuffle step, but means the
- * current upstream partitions will be executed in parallel (per whatever
- * the current partitioning is).
+ * the 100 new partitions will claim 10 of the current partitions.
  */
 case class CoalesceExec(numPartitions: Int, child: SparkPlan) extends UnaryExecNode {
   override def output: Seq[Attribute] = child.output
@@ -532,60 +502,15 @@ case class OutputFakerExec(output: Seq[Attribute], child: SparkPlan) extends Spa
 
 /**
  * Physical plan for a subquery.
+ *
+ * This is used to generate tree string for SparkScalarSubquery.
  */
 case class SubqueryExec(name: String, child: SparkPlan) extends UnaryExecNode {
-
-  override lazy val metrics = Map(
-    "dataSize" -> SQLMetrics.createMetric(sparkContext, "data size (bytes)"),
-    "collectTime" -> SQLMetrics.createMetric(sparkContext, "time to collect (ms)"))
-
   override def output: Seq[Attribute] = child.output
-
   override def outputPartitioning: Partitioning = child.outputPartitioning
-
   override def outputOrdering: Seq[SortOrder] = child.outputOrdering
 
-  override def sameResult(o: SparkPlan): Boolean = o match {
-    case s: SubqueryExec => child.sameResult(s.child)
-    case _ => false
-  }
-
-  @transient
-  private lazy val relationFuture: Future[Array[InternalRow]] = {
-    // relationFuture is used in "doExecute". Therefore we can get the execution id correctly here.
-    val executionId = sparkContext.getLocalProperty(SQLExecution.EXECUTION_ID_KEY)
-    Future {
-      // This will run in another thread. Set the execution id so that we can connect these jobs
-      // with the correct execution.
-      SQLExecution.withExecutionId(sparkContext, executionId) {
-        val beforeCollect = System.nanoTime()
-        // Note that we use .executeCollect() because we don't want to convert data to Scala types
-        val rows: Array[InternalRow] = child.executeCollect()
-        val beforeBuild = System.nanoTime()
-        longMetric("collectTime") += (beforeBuild - beforeCollect) / 1000000
-        val dataSize = rows.map(_.asInstanceOf[UnsafeRow].getSizeInBytes.toLong).sum
-        longMetric("dataSize") += dataSize
-
-        SQLMetrics.postDriverMetricUpdates(sparkContext, executionId, metrics.values.toSeq)
-        rows
-      }
-    }(SubqueryExec.executionContext)
-  }
-
-  protected override def doPrepare(): Unit = {
-    relationFuture
-  }
-
   protected override def doExecute(): RDD[InternalRow] = {
-    child.execute()
+    throw new UnsupportedOperationException
   }
-
-  override def executeCollect(): Array[InternalRow] = {
-    ThreadUtils.awaitResultInForkJoinSafely(relationFuture, Duration.Inf)
-  }
-}
-
-object SubqueryExec {
-  private[execution] val executionContext = ExecutionContext.fromExecutorService(
-    ThreadUtils.newDaemonCachedThreadPool("subquery", 16))
 }

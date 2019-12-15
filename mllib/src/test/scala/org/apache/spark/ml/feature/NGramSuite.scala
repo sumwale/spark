@@ -28,18 +28,17 @@ import org.apache.spark.sql.{Dataset, Row}
 case class NGramTestData(inputTokens: Array[String], wantedNGrams: Array[String])
 
 class NGramSuite extends SparkFunSuite with MLlibTestSparkContext with DefaultReadWriteTest {
-
   import org.apache.spark.ml.feature.NGramSuite._
-  import testImplicits._
 
   test("default behavior yields bigram features") {
     val nGram = new NGram()
       .setInputCol("inputTokens")
       .setOutputCol("nGrams")
-    val dataset = Seq(NGramTestData(
-      Array("Test", "for", "ngram", "."),
-      Array("Test for", "for ngram", "ngram .")
-    )).toDF()
+    val dataset = spark.createDataFrame(Seq(
+      NGramTestData(
+        Array("Test", "for", "ngram", "."),
+        Array("Test for", "for ngram", "ngram .")
+    )))
     testNGram(nGram, dataset)
   }
 
@@ -48,10 +47,11 @@ class NGramSuite extends SparkFunSuite with MLlibTestSparkContext with DefaultRe
       .setInputCol("inputTokens")
       .setOutputCol("nGrams")
       .setN(4)
-    val dataset = Seq(NGramTestData(
-      Array("a", "b", "c", "d", "e"),
-      Array("a b c d", "b c d e")
-    )).toDF()
+    val dataset = spark.createDataFrame(Seq(
+      NGramTestData(
+        Array("a", "b", "c", "d", "e"),
+        Array("a b c d", "b c d e")
+      )))
     testNGram(nGram, dataset)
   }
 
@@ -60,7 +60,11 @@ class NGramSuite extends SparkFunSuite with MLlibTestSparkContext with DefaultRe
       .setInputCol("inputTokens")
       .setOutputCol("nGrams")
       .setN(4)
-    val dataset = Seq(NGramTestData(Array(), Array())).toDF()
+    val dataset = spark.createDataFrame(Seq(
+      NGramTestData(
+        Array(),
+        Array()
+      )))
     testNGram(nGram, dataset)
   }
 
@@ -69,10 +73,11 @@ class NGramSuite extends SparkFunSuite with MLlibTestSparkContext with DefaultRe
       .setInputCol("inputTokens")
       .setOutputCol("nGrams")
       .setN(6)
-    val dataset = Seq(NGramTestData(
-      Array("a", "b", "c", "d", "e"),
-      Array()
-    )).toDF()
+    val dataset = spark.createDataFrame(Seq(
+      NGramTestData(
+        Array("a", "b", "c", "d", "e"),
+        Array()
+      )))
     testNGram(nGram, dataset)
   }
 

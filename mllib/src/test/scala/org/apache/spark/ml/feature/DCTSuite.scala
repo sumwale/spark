@@ -32,8 +32,6 @@ case class DCTTestData(vec: Vector, wantedVec: Vector)
 
 class DCTSuite extends SparkFunSuite with MLlibTestSparkContext with DefaultReadWriteTest {
 
-  import testImplicits._
-
   test("forward transform of discrete cosine matches jTransforms result") {
     val data = Vectors.dense((0 until 128).map(_ => 2D * math.random - 1D).toArray)
     val inverse = false
@@ -59,13 +57,15 @@ class DCTSuite extends SparkFunSuite with MLlibTestSparkContext with DefaultRead
   private def testDCT(data: Vector, inverse: Boolean): Unit = {
     val expectedResultBuffer = data.toArray.clone()
     if (inverse) {
-      new DoubleDCT_1D(data.size).inverse(expectedResultBuffer, true)
+      (new DoubleDCT_1D(data.size)).inverse(expectedResultBuffer, true)
     } else {
-      new DoubleDCT_1D(data.size).forward(expectedResultBuffer, true)
+      (new DoubleDCT_1D(data.size)).forward(expectedResultBuffer, true)
     }
     val expectedResult = Vectors.dense(expectedResultBuffer)
 
-    val dataset = Seq(DCTTestData(data, expectedResult)).toDF()
+    val dataset = spark.createDataFrame(Seq(
+      DCTTestData(data, expectedResult)
+    ))
 
     val transformer = new DCT()
       .setInputCol("vec")

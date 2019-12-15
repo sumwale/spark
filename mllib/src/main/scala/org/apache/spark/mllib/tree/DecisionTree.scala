@@ -75,6 +75,10 @@ object DecisionTree extends Serializable with Logging {
    * Method to train a decision tree model.
    * The method supports binary and multiclass classification and regression.
    *
+   * Note: Using [[org.apache.spark.mllib.tree.DecisionTree$#trainClassifier]]
+   *       and [[org.apache.spark.mllib.tree.DecisionTree$#trainRegressor]]
+   *       is recommended to clearly separate classification and regression.
+   *
    * @param input Training dataset: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]].
    *              For classification, labels should take values {0, 1, ..., numClasses-1}.
    *              For regression, labels are real numbers.
@@ -82,10 +86,6 @@ object DecisionTree extends Serializable with Logging {
    *                 of decision tree (classification or regression), feature type (continuous,
    *                 categorical), depth of the tree, quantile calculation strategy, etc.
    * @return DecisionTreeModel that can be used for prediction.
-   *
-   * @note Using [[org.apache.spark.mllib.tree.DecisionTree$#trainClassifier]]
-   * and [[org.apache.spark.mllib.tree.DecisionTree$#trainRegressor]]
-   * is recommended to clearly separate classification and regression.
    */
   @Since("1.0.0")
   def train(input: RDD[LabeledPoint], strategy: Strategy): DecisionTreeModel = {
@@ -96,6 +96,10 @@ object DecisionTree extends Serializable with Logging {
    * Method to train a decision tree model.
    * The method supports binary and multiclass classification and regression.
    *
+   * Note: Using [[org.apache.spark.mllib.tree.DecisionTree$#trainClassifier]]
+   *       and [[org.apache.spark.mllib.tree.DecisionTree$#trainRegressor]]
+   *       is recommended to clearly separate classification and regression.
+   *
    * @param input Training dataset: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]].
    *              For classification, labels should take values {0, 1, ..., numClasses-1}.
    *              For regression, labels are real numbers.
@@ -104,10 +108,6 @@ object DecisionTree extends Serializable with Logging {
    * @param maxDepth Maximum depth of the tree (e.g. depth 0 means 1 leaf node, depth 1 means
    *                 1 internal node + 2 leaf nodes).
    * @return DecisionTreeModel that can be used for prediction.
-   *
-   * @note Using [[org.apache.spark.mllib.tree.DecisionTree$#trainClassifier]]
-   * and [[org.apache.spark.mllib.tree.DecisionTree$#trainRegressor]]
-   * is recommended to clearly separate classification and regression.
    */
   @Since("1.0.0")
   def train(
@@ -123,6 +123,10 @@ object DecisionTree extends Serializable with Logging {
    * Method to train a decision tree model.
    * The method supports binary and multiclass classification and regression.
    *
+   * Note: Using [[org.apache.spark.mllib.tree.DecisionTree$#trainClassifier]]
+   *       and [[org.apache.spark.mllib.tree.DecisionTree$#trainRegressor]]
+   *       is recommended to clearly separate classification and regression.
+   *
    * @param input Training dataset: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]].
    *              For classification, labels should take values {0, 1, ..., numClasses-1}.
    *              For regression, labels are real numbers.
@@ -132,10 +136,6 @@ object DecisionTree extends Serializable with Logging {
    *                 1 internal node + 2 leaf nodes).
    * @param numClasses Number of classes for classification. Default value of 2.
    * @return DecisionTreeModel that can be used for prediction.
-   *
-   * @note Using [[org.apache.spark.mllib.tree.DecisionTree$#trainClassifier]]
-   * and [[org.apache.spark.mllib.tree.DecisionTree$#trainRegressor]]
-   * is recommended to clearly separate classification and regression.
    */
   @Since("1.2.0")
   def train(
@@ -152,6 +152,10 @@ object DecisionTree extends Serializable with Logging {
    * Method to train a decision tree model.
    * The method supports binary and multiclass classification and regression.
    *
+   * Note: Using [[org.apache.spark.mllib.tree.DecisionTree$#trainClassifier]]
+   *       and [[org.apache.spark.mllib.tree.DecisionTree$#trainRegressor]]
+   *       is recommended to clearly separate classification and regression.
+   *
    * @param input Training dataset: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]].
    *              For classification, labels should take values {0, 1, ..., numClasses-1}.
    *              For regression, labels are real numbers.
@@ -162,14 +166,10 @@ object DecisionTree extends Serializable with Logging {
    * @param numClasses Number of classes for classification. Default value of 2.
    * @param maxBins Maximum number of bins used for splitting features.
    * @param quantileCalculationStrategy  Algorithm for calculating quantiles.
-   * @param categoricalFeaturesInfo Map storing arity of categorical features. An entry (n to k)
+   * @param categoricalFeaturesInfo Map storing arity of categorical features. An entry (n -> k)
    *                                indicates that feature n is categorical with k categories
    *                                indexed from 0: {0, 1, ..., k-1}.
    * @return DecisionTreeModel that can be used for prediction.
-   *
-   * @note Using [[org.apache.spark.mllib.tree.DecisionTree$#trainClassifier]]
-   * and [[org.apache.spark.mllib.tree.DecisionTree$#trainRegressor]]
-   * is recommended to clearly separate classification and regression.
    */
   @Since("1.0.0")
   def train(
@@ -192,7 +192,7 @@ object DecisionTree extends Serializable with Logging {
    * @param input Training dataset: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]].
    *              Labels should take values {0, 1, ..., numClasses-1}.
    * @param numClasses Number of classes for classification.
-   * @param categoricalFeaturesInfo Map storing arity of categorical features. An entry (n to k)
+   * @param categoricalFeaturesInfo Map storing arity of categorical features. An entry (n -> k)
    *                                indicates that feature n is categorical with k categories
    *                                indexed from 0: {0, 1, ..., k-1}.
    * @param impurity Criterion used for information gain calculation.
@@ -238,7 +238,7 @@ object DecisionTree extends Serializable with Logging {
    *
    * @param input Training dataset: RDD of [[org.apache.spark.mllib.regression.LabeledPoint]].
    *              Labels are real numbers.
-   * @param categoricalFeaturesInfo Map storing arity of categorical features. An entry (n to k)
+   * @param categoricalFeaturesInfo Map storing arity of categorical features. An entry (n -> k)
    *                                indicates that feature n is categorical with k categories
    *                                indexed from 0: {0, 1, ..., k-1}.
    * @param impurity Criterion used for information gain calculation.

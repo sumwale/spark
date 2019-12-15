@@ -55,21 +55,10 @@ class BlockManagerMasterEndpoint(
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
 
-  private val topologyMapper = {
-    val topologyMapperClassName = conf.get(
-      "spark.storage.replication.topologyMapper", classOf[DefaultTopologyMapper].getName)
-    val clazz = Utils.classForName(topologyMapperClassName)
-    val mapper =
-      clazz.getConstructor(classOf[SparkConf]).newInstance(conf).asInstanceOf[TopologyMapper]
-    logInfo(s"Using $topologyMapperClassName for getting topology information")
-    mapper
-  }
-
-  logInfo("BlockManagerMasterEndpoint up")
-
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case RegisterBlockManager(blockManagerId, maxMemSize, slaveEndpoint) =>
-      context.reply(register(blockManagerId, maxMemSize, slaveEndpoint))
+      register(blockManagerId, maxMemSize, slaveEndpoint)
+      context.reply(true)
 
     case _updateBlockInfo @
         UpdateBlockInfo(blockManagerId, blockId, storageLevel, deserializedSize, size) =>
@@ -309,21 +298,7 @@ class BlockManagerMasterEndpoint(
     ).map(_.flatten.toSeq)
   }
 
-  /**
-   * Returns the BlockManagerId with topology information populated, if available.
-   */
-  private def register(
-      idWithoutTopologyInfo: BlockManagerId,
-      maxMemSize: Long,
-      slaveEndpoint: RpcEndpointRef): BlockManagerId = {
-    // the dummy id is not expected to contain the topology information.
-    // we get that info here and respond back with a more fleshed out block manager id
-    val id = BlockManagerId(
-      idWithoutTopologyInfo.executorId,
-      idWithoutTopologyInfo.host,
-      idWithoutTopologyInfo.port,
-      topologyMapper.getTopologyForHost(idWithoutTopologyInfo.host))
-
+  private def register(id: BlockManagerId, maxMemSize: Long, slaveEndpoint: RpcEndpointRef) {
     val time = System.currentTimeMillis()
     if (!blockManagerInfo.contains(id)) {
       blockManagerIdByExecutor.get(id.executorId) match {
@@ -343,7 +318,6 @@ class BlockManagerMasterEndpoint(
         id, System.currentTimeMillis(), maxMemSize, slaveEndpoint)
     }
     listenerBus.post(SparkListenerBlockManagerAdded(time, id, maxMemSize))
-    id
   }
 
   private def updateBlockInfo(

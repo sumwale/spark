@@ -23,7 +23,6 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 
 import org.apache.spark.sql._
-import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.{Analyzer, FunctionRegistry}
 import org.apache.spark.sql.catalyst.catalog._
 import org.apache.spark.sql.catalyst.optimizer.Optimizer
@@ -31,8 +30,8 @@ import org.apache.spark.sql.catalyst.parser.ParserInterface
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.command.AnalyzeTableCommand
-import org.apache.spark.sql.execution.datasources._
-import org.apache.spark.sql.streaming.{StreamingQuery, StreamingQueryListener, StreamingQueryManager}
+import org.apache.spark.sql.execution.datasources.{DataSourceAnalysis, FindDataSourceTable, PreprocessTableInsertion, ResolveDataSource}
+import org.apache.spark.sql.streaming.{StreamingQuery, StreamingQueryManager}
 import org.apache.spark.sql.util.ExecutionListenerManager
 
 
@@ -95,7 +94,6 @@ private[sql] class SessionState(sparkSession: SparkSession) {
    */
   lazy val catalog = new SessionCatalog(
     sparkSession.sharedState.externalCatalog,
-    sparkSession.sharedState.globalTempViewManager,
     functionResourceLoader,
     functionRegistry,
     conf,
@@ -113,14 +111,12 @@ private[sql] class SessionState(sparkSession: SparkSession) {
   lazy val analyzer: Analyzer = {
     new Analyzer(catalog, conf) {
       override val extendedResolutionRules =
-        AnalyzeCreateTable(sparkSession) ::
         PreprocessTableInsertion(conf) ::
         new FindDataSourceTable(sparkSession) ::
         DataSourceAnalysis(conf) ::
         (if (conf.runSQLonFile) new ResolveDataSource(sparkSession) :: Nil else Nil)
 
-      override val extendedCheckRules =
-        Seq(PreWriteCheck(conf, catalog), HiveOnlyCheck)
+      override val extendedCheckRules = Seq(datasources.PreWriteCheck(conf, catalog))
     }
   }
 
@@ -151,19 +147,6 @@ private[sql] class SessionState(sparkSession: SparkSession) {
    */
   lazy val streamingQueryManager: StreamingQueryManager = {
     new StreamingQueryManager(sparkSession)
-  }
-
-  /**
-   * Listener for streaming query UI
-   */
-  private var streamingQueryListener: StreamingQueryListener = _
-
-  def registerStreamingQueryListener(streamingQueryListener: StreamingQueryListener): Unit = {
-    this.streamingQueryListener = streamingQueryListener
-  }
-
-  def removeStreamingQueryListener(): Unit = {
-    streamingQueryManager.removeListener(streamingQueryListener)
   }
 
   private val jarClassLoader: NonClosableMutableURLClassLoader =
@@ -203,8 +186,11 @@ private[sql] class SessionState(sparkSession: SparkSession) {
   /**
    * Analyzes the given table in the current database to generate statistics, which will be
    * used in query optimizations.
+   *
+   * Right now, it only supports catalog tables and it only updates the size of a catalog table
+   * in the external catalog.
    */
-  def analyze(tableIdent: TableIdentifier, noscan: Boolean = true): Unit = {
-    AnalyzeTableCommand(tableIdent, noscan).run(sparkSession)
+  def analyze(tableName: String): Unit = {
+    AnalyzeTableCommand(tableName).run(sparkSession)
   }
 }

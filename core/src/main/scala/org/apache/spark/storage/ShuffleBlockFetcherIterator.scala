@@ -76,8 +76,7 @@ final class ShuffleBlockFetcherIterator(
    */
   private[this] var numBlocksProcessed = 0
 
-  private[this] val startTime =
-    if (log.isDebugEnabled || isTraceEnabled) System.currentTimeMillis else 0L
+  private[this] val startTime = System.currentTimeMillis
 
   /** Local blocks to fetch, excluding zero-sized blocks. */
   private[this] val localBlocks = new ArrayBuffer[BlockId]()
@@ -180,11 +179,10 @@ final class ShuffleBlockFetcherIterator(
               remainingBlocks -= blockId
               results.put(new SuccessFetchResult(BlockId(blockId), address, sizeMap(blockId), buf,
                 remainingBlocks.isEmpty))
-              if (log.isDebugEnabled) logDebug("remainingBlocks: " + remainingBlocks)
+              logDebug("remainingBlocks: " + remainingBlocks)
             }
           }
-          if (isTraceEnabled) logTrace("Got remote block " + blockId + " after " +
-              Utils.getUsedTimeMs(startTime))
+          logTrace("Got remote block " + blockId + " after " + Utils.getUsedTimeMs(startTime))
         }
 
         override def onBlockFetchFailure(blockId: String, e: Throwable): Unit = {
@@ -249,7 +247,7 @@ final class ShuffleBlockFetcherIterator(
 
   /**
    * Fetch the local blocks while we are fetching remote blocks. This is ok because
-   * `ManagedBuffer`'s memory is allocated lazily when we create the input stream, so all we
+   * [[ManagedBuffer]]'s memory is allocated lazily when we create the input stream, so all we
    * track in-memory are the ManagedBuffer references themselves.
    */
   private[this] def fetchLocalBlocks() {
@@ -288,13 +286,11 @@ final class ShuffleBlockFetcherIterator(
     fetchUpToMaxBytes()
 
     val numFetches = remoteRequests.size - fetchRequests.size
-    val isDebugEnabled = log.isDebugEnabled
-    if (isDebugEnabled) logDebug("Started " + numFetches + " remote fetches in" +
-        Utils.getUsedTimeMs(startTime))
+    logInfo("Started " + numFetches + " remote fetches in" + Utils.getUsedTimeMs(startTime))
 
     // Get Local Blocks
     fetchLocalBlocks()
-    if (isDebugEnabled) logDebug("Got local blocks in " + Utils.getUsedTimeMs(startTime))
+    logDebug("Got local blocks in " + Utils.getUsedTimeMs(startTime))
   }
 
   override def hasNext: Boolean = numBlocksProcessed < numBlocksToFetch
@@ -308,17 +304,12 @@ final class ShuffleBlockFetcherIterator(
    * Throws a FetchFailedException if the next block could not be fetched.
    */
   override def next(): (BlockId, InputStream) = {
-    if (!hasNext) {
-      throw new NoSuchElementException
-    }
-
     numBlocksProcessed += 1
-    val startFetchWait = System.nanoTime()
+    val startFetchWait = System.currentTimeMillis()
     currentResult = results.take()
     val result = currentResult
-    val stopFetchWait = System.nanoTime()
-    shuffleMetrics.incFetchWaitTime(
-      math.max(stopFetchWait - startFetchWait, 0L).toDouble / 1000000.0)
+    val stopFetchWait = System.currentTimeMillis()
+    shuffleMetrics.incFetchWaitTime(stopFetchWait - startFetchWait)
 
     result match {
       case SuccessFetchResult(_, address, size, buf, isNetworkReqDone) =>
@@ -432,7 +423,7 @@ object ShuffleBlockFetcherIterator {
    * @param address BlockManager that the block was fetched from.
    * @param size estimated size of the block, used to calculate bytesInFlight.
    *             Note that this is NOT the exact bytes.
-   * @param buf `ManagedBuffer` for the content.
+   * @param buf [[ManagedBuffer]] for the content.
    * @param isNetworkReqDone Is this the last network request for this host in this fetch request.
    */
   private[storage] case class SuccessFetchResult(

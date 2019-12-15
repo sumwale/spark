@@ -28,7 +28,6 @@ import io.netty.channel.socket.SocketChannel
 import io.netty.channel.socket.nio.NioServerSocketChannel
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder
 import io.netty.handler.codec.bytes.{ByteArrayDecoder, ByteArrayEncoder}
-import io.netty.handler.timeout.ReadTimeoutHandler
 
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
@@ -42,15 +41,9 @@ private[spark] class RBackend {
   private[this] var bootstrap: ServerBootstrap = null
   private[this] var bossGroup: EventLoopGroup = null
 
-  /** Tracks JVM objects returned to R for this RBackend instance. */
-  private[r] val jvmObjectTracker = new JVMObjectTracker
-
   def init(): Int = {
     val conf = new SparkConf()
-    val backendConnectionTimeout = conf.getInt(
-      "spark.r.backendConnectionTimeout", SparkRDefaults.DEFAULT_CONNECTION_TIMEOUT)
-    bossGroup = new NioEventLoopGroup(
-      conf.getInt("spark.r.numRBackendThreads", SparkRDefaults.DEFAULT_NUM_RBACKEND_THREADS))
+    bossGroup = new NioEventLoopGroup(conf.getInt("spark.r.numRBackendThreads", 2))
     val workerGroup = bossGroup
     val handler = new RBackendHandler(this)
 
@@ -70,7 +63,6 @@ private[spark] class RBackend {
             // initialBytesToStrip = 4, i.e. strip out the length field itself
             new LengthFieldBasedFrameDecoder(Integer.MAX_VALUE, 0, 4, 0, 4))
           .addLast("decoder", new ByteArrayDecoder())
-          .addLast("readTimeoutHandler", new ReadTimeoutHandler(backendConnectionTimeout))
           .addLast("handler", handler)
       }
     })
@@ -97,7 +89,6 @@ private[spark] class RBackend {
       bootstrap.childGroup().shutdownGracefully()
     }
     bootstrap = null
-    jvmObjectTracker.clear()
   }
 
 }
@@ -119,11 +110,6 @@ private[spark] object RBackend extends Logging {
       val boundPort = sparkRBackend.init()
       val serverSocket = new ServerSocket(0, 1, InetAddress.getByName("localhost"))
       val listenPort = serverSocket.getLocalPort()
-      // Connection timeout is set by socket client. To make it configurable we will pass the
-      // timeout value to client inside the temp file
-      val conf = new SparkConf()
-      val backendConnectionTimeout = conf.getInt(
-        "spark.r.backendConnectionTimeout", SparkRDefaults.DEFAULT_CONNECTION_TIMEOUT)
 
       // tell the R process via temporary file
       val path = args(0)
@@ -132,7 +118,6 @@ private[spark] object RBackend extends Logging {
       dos.writeInt(boundPort)
       dos.writeInt(listenPort)
       SerDe.writeString(dos, RUtils.rPackages.getOrElse(""))
-      dos.writeInt(backendConnectionTimeout)
       dos.close()
       f.renameTo(new File(path))
 

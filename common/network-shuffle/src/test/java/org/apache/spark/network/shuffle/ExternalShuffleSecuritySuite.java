@@ -59,7 +59,7 @@ public class ExternalShuffleSecuritySuite {
   }
 
   @Test
-  public void testValid() throws IOException, InterruptedException {
+  public void testValid() throws IOException {
     validate("my-app-id", "secret", false);
   }
 
@@ -82,13 +82,12 @@ public class ExternalShuffleSecuritySuite {
   }
 
   @Test
-  public void testEncryption() throws IOException, InterruptedException {
+  public void testEncryption() throws IOException {
     validate("my-app-id", "secret", true);
   }
 
   /** Creates an ExternalShuffleClient and attempts to register with the server. */
-  private void validate(String appId, String secretKey, boolean encrypt)
-        throws IOException, InterruptedException {
+  private void validate(String appId, String secretKey, boolean encrypt) throws IOException {
     ExternalShuffleClient client =
       new ExternalShuffleClient(conf, new TestSecretKeyHolder(appId, secretKey), true, encrypt);
     client.init(appId);

@@ -17,7 +17,7 @@
 package org.apache.spark.status.api.v1
 
 import java.text.{ParseException, SimpleDateFormat}
-import java.util.{Locale, TimeZone}
+import java.util.TimeZone
 import javax.ws.rs.WebApplicationException
 import javax.ws.rs.core.Response
 import javax.ws.rs.core.Response.Status
@@ -25,12 +25,12 @@ import javax.ws.rs.core.Response.Status
 private[v1] class SimpleDateParam(val originalValue: String) {
 
   val timestamp: Long = {
-    val format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSz", Locale.US)
+    val format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSz")
     try {
       format.parse(originalValue).getTime()
     } catch {
       case _: ParseException =>
-        val gmtDay = new SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val gmtDay = new SimpleDateFormat("yyyy-MM-dd")
         gmtDay.setTimeZone(TimeZone.getTimeZone("GMT"))
         try {
           gmtDay.parse(originalValue).getTime()

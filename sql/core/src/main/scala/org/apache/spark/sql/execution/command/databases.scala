@@ -59,4 +59,6 @@ case class SetDatabaseCommand(databaseName: String) extends RunnableCommand {
     sparkSession.sessionState.catalog.setCurrentDatabase(databaseName)
     Seq.empty[Row]
   }
+
+  override val output: Seq[Attribute] = Seq.empty
 }

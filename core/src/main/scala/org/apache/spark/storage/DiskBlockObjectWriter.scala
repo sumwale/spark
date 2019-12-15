@@ -22,7 +22,7 @@ import java.nio.channels.FileChannel
 
 import org.apache.spark.executor.ShuffleWriteMetrics
 import org.apache.spark.internal.Logging
-import org.apache.spark.serializer.{SerializationStream, SerializerInstance, SerializerManager}
+import org.apache.spark.serializer.{SerializationStream, SerializerInstance}
 import org.apache.spark.util.Utils
 
 /**
@@ -37,9 +37,9 @@ import org.apache.spark.util.Utils
  */
 private[spark] class DiskBlockObjectWriter(
     val file: File,
-    serializerManager: SerializerManager,
     serializerInstance: SerializerInstance,
     bufferSize: Int,
+    compressStream: OutputStream => OutputStream,
     syncWrites: Boolean,
     // These write metrics concurrently shared with other active DiskBlockObjectWriters who
     // are themselves performing writes. All updates must be relative.
@@ -115,8 +115,7 @@ private[spark] class DiskBlockObjectWriter(
       initialize()
       initialized = true
     }
-
-    bs = serializerManager.wrapStream(blockId, mcs)
+    bs = compressStream(mcs)
     objOut = serializerInstance.serializeStream(bs)
     streamOpen = true
     this
@@ -128,19 +127,16 @@ private[spark] class DiskBlockObjectWriter(
    */
   private def closeResources(): Unit = {
     if (initialized) {
-      Utils.tryWithSafeFinally {
-        mcs.manualClose()
-      } {
-        channel = null
-        mcs = null
-        bs = null
-        fos = null
-        ts = null
-        objOut = null
-        initialized = false
-        streamOpen = false
-        hasBeenClosed = true
-      }
+      mcs.manualClose()
+      channel = null
+      mcs = null
+      bs = null
+      fos = null
+      ts = null
+      objOut = null
+      initialized = false
+      streamOpen = false
+      hasBeenClosed = true
     }
   }
 
@@ -202,29 +198,26 @@ private[spark] class DiskBlockObjectWriter(
   def revertPartialWritesAndClose(): File = {
     // Discard current writes. We do this by flushing the outstanding writes and then
     // truncating the file to its initial position.
-    Utils.tryWithSafeFinally {
+    try {
       if (initialized) {
         writeMetrics.decBytesWritten(reportedPosition - committedPosition)
         writeMetrics.decRecordsWritten(numRecordsWritten)
         streamOpen = false
         closeResources()
       }
-    } {
-      var truncateStream: FileOutputStream = null
+
+      val truncateStream = new FileOutputStream(file, true)
       try {
-        truncateStream = new FileOutputStream(file, true)
         truncateStream.getChannel.truncate(committedPosition)
-      } catch {
-        case e: Exception =>
-          logError("Uncaught exception while reverting partial writes to file " + file, e)
+        file
       } finally {
-        if (truncateStream != null) {
-          truncateStream.close()
-          truncateStream = null
-        }
+        truncateStream.close()
       }
+    } catch {
+      case e: Exception =>
+        logError("Uncaught exception while reverting partial writes to file " + file, e)
+        file
     }
-    file
   }
 
   /**

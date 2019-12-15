@@ -171,9 +171,8 @@ class RowMatrix(DistributedMatrix):
     def computeCovariance(self):
         """
         Computes the covariance matrix, treating each row as an
-        observation.
-
-        .. note:: This cannot be computed on matrices with more than 65535 columns.
+        observation. Note that this cannot be computed on matrices
+        with more than 65535 columns.
 
         >>> rows = sc.parallelize([[1, 2], [2, 1]])
         >>> mat = RowMatrix(rows)
@@ -186,9 +185,8 @@ class RowMatrix(DistributedMatrix):
     @since('2.0.0')
     def computeGramianMatrix(self):
         """
-        Computes the Gramian matrix `A^T A`.
-
-        .. note:: This cannot be computed on matrices with more than 65535 columns.
+        Computes the Gramian matrix `A^T A`. Note that this cannot be
+        computed on matrices with more than 65535 columns.
 
         >>> rows = sc.parallelize([[1, 2, 3], [4, 5, 6]])
         >>> mat = RowMatrix(rows)
@@ -460,9 +458,8 @@ class IndexedRowMatrix(DistributedMatrix):
     @since('2.0.0')
     def computeGramianMatrix(self):
         """
-        Computes the Gramian matrix `A^T A`.
-
-        .. note:: This cannot be computed on matrices with more than 65535 columns.
+        Computes the Gramian matrix `A^T A`. Note that this cannot be
+        computed on matrices with more than 65535 columns.
 
         >>> rows = sc.parallelize([IndexedRow(0, [1, 2, 3]),
         ...                        IndexedRow(1, [4, 5, 6])])

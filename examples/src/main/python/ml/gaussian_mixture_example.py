@@ -38,11 +38,11 @@ if __name__ == "__main__":
     # loads data
     dataset = spark.read.format("libsvm").load("data/mllib/sample_kmeans_data.txt")
 
-    gmm = GaussianMixture().setK(2).setSeed(538009335)
+    gmm = GaussianMixture().setK(2)
     model = gmm.fit(dataset)
 
-    print("Gaussians shown as a DataFrame: ")
-    model.gaussiansDF.show(truncate=False)
+    print("Gaussians: ")
+    model.gaussiansDF.show()
     # $example off$
 
     spark.stop()

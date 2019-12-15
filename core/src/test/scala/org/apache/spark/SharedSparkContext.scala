@@ -17,11 +17,11 @@
 
 package org.apache.spark
 
-import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
+import org.scalatest.BeforeAndAfterAll
 import org.scalatest.Suite
 
 /** Shares a local `SparkContext` between all tests in a suite and closes it at the end */
-trait SharedSparkContext extends BeforeAndAfterAll with BeforeAndAfterEach { self: Suite =>
+trait SharedSparkContext extends BeforeAndAfterAll { self: Suite =>
 
   @transient private var _sc: SparkContext = _
 
@@ -31,8 +31,7 @@ trait SharedSparkContext extends BeforeAndAfterAll with BeforeAndAfterEach { sel
 
   override def beforeAll() {
     super.beforeAll()
-    _sc = new SparkContext(
-      "local[4]", "test", conf.set("spark.hadoop.fs.file.impl", classOf[DebugFilesystem].getName))
+    _sc = new SparkContext("local[4]", "test", conf)
   }
 
   override def afterAll() {
@@ -42,15 +41,5 @@ trait SharedSparkContext extends BeforeAndAfterAll with BeforeAndAfterEach { sel
     } finally {
       super.afterAll()
     }
-  }
-
-  protected override def beforeEach(): Unit = {
-    super.beforeEach()
-    DebugFilesystem.clearOpenStreams()
-  }
-
-  protected override def afterEach(): Unit = {
-    super.afterEach()
-    DebugFilesystem.assertNoOpenStreams()
   }
 }

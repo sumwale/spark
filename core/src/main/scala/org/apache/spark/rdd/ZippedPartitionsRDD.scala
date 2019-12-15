@@ -21,19 +21,16 @@ import java.io.{IOException, ObjectOutputStream}
 
 import scala.reflect.ClassTag
 
-import com.esotericsoftware.kryo.{Kryo, KryoSerializable}
-import com.esotericsoftware.kryo.io.{Input, Output}
-
 import org.apache.spark.{OneToOneDependency, Partition, SparkContext, TaskContext}
 import org.apache.spark.util.Utils
 
 private[spark] class ZippedPartitionsPartition(
-    private var idx: Int,
+    idx: Int,
     @transient private val rdds: Seq[RDD[_]],
     @transient val preferredLocations: Seq[String])
-  extends Partition with KryoSerializable {
+  extends Partition {
 
-  override def index: Int = idx
+  override val index: Int = idx
   var partitionValues = rdds.map(rdd => rdd.partitions(idx))
   def partitions: Seq[Partition] = partitionValues
 
@@ -42,27 +39,6 @@ private[spark] class ZippedPartitionsPartition(
     // Update the reference to parent split at the time of task serialization
     partitionValues = rdds.map(rdd => rdd.partitions(idx))
     oos.defaultWriteObject()
-  }
-
-  override def write(kryo: Kryo, output: Output): Unit = {
-    // Update the reference to parent split at the time of task serialization
-    partitionValues = rdds.map(rdd => rdd.partitions(idx))
-    output.writeVarInt(idx, true)
-    output.writeVarInt(partitionValues.length, true)
-    for (p <- partitionValues) {
-      kryo.writeClassAndObject(output, p)
-    }
-  }
-
-  override def read(kryo: Kryo, input: Input): Unit = {
-    idx = input.readVarInt(true)
-    var numPartitions = input.readVarInt(true)
-    val partitionBuilder = Seq.newBuilder[Partition]
-    while (numPartitions > 0) {
-      partitionBuilder += kryo.readClassAndObject(input).asInstanceOf[Partition]
-      numPartitions -= 1
-    }
-    partitionValues = partitionBuilder.result()
   }
 }
 

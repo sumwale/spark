@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets
 import java.sql.Timestamp
 import java.util.concurrent.TimeUnit
 
+import scala.collection.JavaConverters._
 import scala.collection.mutable.HashMap
 import scala.language.implicitConversions
 
@@ -35,11 +36,11 @@ import org.apache.hadoop.util.VersionInfo
 
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.internal.Logging
+import org.apache.spark.internal.config.CATALOG_IMPLEMENTATION
 import org.apache.spark.sql._
 import org.apache.spark.sql.hive.client._
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.internal.SQLConf._
-import org.apache.spark.sql.internal.StaticSQLConf.{CATALOG_IMPLEMENTATION, WAREHOUSE_PATH}
 import org.apache.spark.sql.types._
 import org.apache.spark.util.Utils
 
@@ -80,14 +81,6 @@ private[spark] object HiveUtils extends Logging {
       """.stripMargin)
     .stringConf
     .createWithDefault("builtin")
-
-  val HIVE_METASTORE_ISOLATION = SQLConfigBuilder("spark.sql.hive.metastore.isolation")
-      .doc("When set to true, Spark SQL will load the hive meta-store client in an isolated " +
-          "ClassLoader to enable using different hive jar versions in the same application. " +
-          "If false and when the jars property is builtin then it will use the Spark " +
-          "ClassLoader used for rest of the Spark classes. Default is true.")
-      .booleanConf
-      .createWithDefault(true)
 
   val CONVERT_METASTORE_PARQUET = SQLConfigBuilder("spark.sql.hive.convertMetastoreParquet")
     .doc("When set to false, Spark SQL will use the Hive SerDe for parquet tables instead of " +
@@ -287,11 +280,10 @@ private[spark] object HiveUtils extends Logging {
         throw new IllegalArgumentException(
           "Builtin jars can only be used when hive execution version == hive metastore version. " +
             s"Execution: $hiveExecutionVersion != Metastore: $hiveMetastoreVersion. " +
-            s"Specify a vaild path to the correct hive jars using $HIVE_METASTORE_JARS " +
+            "Specify a vaild path to the correct hive jars using $HIVE_METASTORE_JARS " +
             s"or change ${HIVE_METASTORE_VERSION.key} to $hiveExecutionVersion.")
       }
 
-      val isolationOn = sqlConf.getConf(HIVE_METASTORE_ISOLATION)
       // We recursively find all jars in the class loader chain,
       // starting from the given classLoader.
       def allJars(classLoader: ClassLoader): Array[URL] = classLoader match {
@@ -317,7 +309,7 @@ private[spark] object HiveUtils extends Logging {
         hadoopConf = hadoopConf,
         execJars = jars.toSeq,
         config = configurations,
-        isolationOn,
+        isolationOn = true,
         barrierPrefixes = hiveMetastoreBarrierPrefixes,
         sharedPrefixes = hiveMetastoreSharedPrefixes)
     } else if (hiveMetastoreJars == "maven") {
@@ -382,7 +374,7 @@ private[spark] object HiveUtils extends Logging {
         propMap.put(confvar.varname, confvar.getDefaultExpr())
       }
     }
-    propMap.put(WAREHOUSE_PATH.key, localMetastore.toURI.toString)
+    propMap.put(SQLConf.WAREHOUSE_PATH.key, localMetastore.toURI.toString)
     propMap.put(HiveConf.ConfVars.METASTORECONNECTURLKEY.varname,
       s"jdbc:derby:${withInMemoryMode};databaseName=${localMetastore.getAbsolutePath};create=true")
     propMap.put("datanucleus.rdbms.datastoreAdapterClassName",
@@ -401,13 +393,6 @@ private[spark] object HiveUtils extends Logging {
     // Then, you will find that the local metastore mode is only set to true when
     // hive.metastore.uris is not set.
     propMap.put(ConfVars.METASTOREURIS.varname, "")
-
-    // The execution client will generate garbage events, therefore the listeners that are generated
-    // for the execution clients are useless. In order to not output garbage, we don't generate
-    // these listeners.
-    propMap.put(ConfVars.METASTORE_PRE_EVENT_LISTENERS.varname, "")
-    propMap.put(ConfVars.METASTORE_EVENT_LISTENERS.varname, "")
-    propMap.put(ConfVars.METASTORE_END_FUNCTION_LISTENERS.varname, "")
 
     propMap.toMap
   }
