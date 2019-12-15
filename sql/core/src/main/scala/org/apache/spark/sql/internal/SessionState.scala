@@ -154,7 +154,7 @@ private[sql] class SessionState(sparkSession: SparkSession) {
   }
 
   /**
-   * Listener for streaming query UI.
+   * Listener for streaming query UI
    */
   private var streamingQueryListener: StreamingQueryListener = _
 
