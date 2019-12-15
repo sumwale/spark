@@ -17,6 +17,7 @@
 package org.apache.spark.rpc.netty
 
 import java.io.File
+import java.nio.file.Paths
 import java.util.concurrent.ConcurrentHashMap
 
 import org.apache.spark.network.buffer.{FileSegmentManagedBuffer, ManagedBuffer}
@@ -65,15 +66,24 @@ private[netty] class NettyStreamManager(rpcEnv: NettyRpcEnv)
     }
   }
 
+  override def removeFile(path: String): Unit = {
+    val fileName = Paths.get(path).getFileName().toString
+    files.remove(fileName)
+  }
+
   override def addFile(file: File): String = {
-    require(files.putIfAbsent(file.getName(), file) == null,
-      s"File ${file.getName()} already registered.")
+    val existingPath = files.putIfAbsent(file.getName, file)
+    require(existingPath == null || existingPath == file,
+      s"File ${file.getName} was already registered with a different path " +
+        s"(old path = $existingPath, new path = $file")
     s"${rpcEnv.address.toSparkURL}/files/${Utils.encodeFileNameToURIRawPath(file.getName())}"
   }
 
   override def addJar(file: File): String = {
-    require(jars.putIfAbsent(file.getName(), file) == null,
-      s"JAR ${file.getName()} already registered.")
+    val existingPath = jars.putIfAbsent(file.getName, file)
+    require(existingPath == null || existingPath == file,
+      s"File ${file.getName} was already registered with a different path " +
+        s"(old path = $existingPath, new path = $file")
     s"${rpcEnv.address.toSparkURL}/jars/${Utils.encodeFileNameToURIRawPath(file.getName())}"
   }
 

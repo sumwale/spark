@@ -24,15 +24,14 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.language.implicitConversions
 
-import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars
 import org.apache.hadoop.hive.ql.exec.FunctionRegistry
 import org.apache.hadoop.hive.serde2.`lazy`.LazySimpleSerDe
 
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.internal.Logging
-import org.apache.spark.internal.config.CATALOG_IMPLEMENTATION
 import org.apache.spark.sql.{SparkSession, SQLContext}
+import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.catalyst.analysis.FunctionRegistry.FunctionBuilder
 import org.apache.spark.sql.catalyst.expressions.ExpressionInfo
@@ -41,7 +40,8 @@ import org.apache.spark.sql.execution.QueryExecution
 import org.apache.spark.sql.execution.command.CacheTableCommand
 import org.apache.spark.sql.hive._
 import org.apache.spark.sql.hive.client.HiveClient
-import org.apache.spark.sql.internal.SQLConf
+import org.apache.spark.sql.internal.{SessionState, SharedState, SQLConf}
+import org.apache.spark.sql.internal.StaticSQLConf.CATALOG_IMPLEMENTATION
 import org.apache.spark.util.{ShutdownHookManager, Utils}
 
 // SPARK-3729: Test key required to check for initialization errors with config.
@@ -54,6 +54,7 @@ object TestHive
         .set("spark.sql.test", "")
         .set("spark.sql.hive.metastore.barrierPrefixes",
           "org.apache.spark.sql.hive.execution.PairSerDe")
+        .set("spark.sql.warehouse.dir", TestHiveContext.makeWarehouseDir().toURI.getPath)
         // SPARK-8910
         .set("spark.ui.enabled", "false")))
 
@@ -78,16 +79,14 @@ class TestHiveContext(
    * when running in the JVM, i.e. it needs to be false when calling from Python.
    */
   def this(sc: SparkContext, loadTestTables: Boolean = true) {
-    this(new TestHiveSparkSession(HiveUtils.withHiveExternalCatalog(sc), loadTestTables))
+    this(TestHiveContext.newSparkSession(HiveUtils.withHiveExternalCatalog(sc), loadTestTables))
   }
 
   override def newSession(): TestHiveContext = {
-    new TestHiveContext(sparkSession.newSession())
+    new TestHiveContext(sparkSession.newSession().asInstanceOf[TestHiveSparkSession])
   }
 
-  override def sharedState: TestHiveSharedState = sparkSession.sharedState
-
-  override def sessionState: TestHiveSessionState = sparkSession.sessionState
+  override def sessionState: SessionState = sparkSession.sessionState
 
   def setCacheTables(c: Boolean): Unit = {
     sparkSession.setCacheTables(c)
@@ -111,56 +110,43 @@ class TestHiveContext(
  * A [[SparkSession]] used in [[TestHiveContext]].
  *
  * @param sc SparkContext
- * @param warehousePath path to the Hive warehouse directory
- * @param scratchDirPath scratch directory used by Hive's metastore client
- * @param metastoreTemporaryConf configuration options for Hive's metastore
- * @param existingSharedState optional [[TestHiveSharedState]]
+ * @param existingSharedState optional [[SharedState]]
  * @param loadTestTables if true, load the test tables. They can only be loaded when running
  *                       in the JVM, i.e when calling from Python this flag has to be false.
  */
-private[hive] class TestHiveSparkSession(
-    @transient private val sc: SparkContext,
-    val warehousePath: File,
-    scratchDirPath: File,
-    metastoreTemporaryConf: Map[String, String],
-    @transient private val existingSharedState: Option[TestHiveSharedState],
-    private val loadTestTables: Boolean)
-  extends SparkSession(sc) with Logging { self =>
+trait TestHiveSparkSession extends SparkSession with Logging { self =>
 
-  // TODO: We need to set the temp warehouse path to sc's conf.
-  // Right now, In SparkSession, we will set the warehouse path to the default one
-  // instead of the temp one. Then, we override the setting in TestHiveSharedState
-  // when we creating metadataHive. This flow is not easy to follow and can introduce
-  // confusion when a developer is debugging an issue. We need to refactor this part
-  // to just set the temp warehouse path in sc's conf.
-  def this(sc: SparkContext, loadTestTables: Boolean) {
-    this(
-      sc,
-      Utils.createTempDir(namePrefix = "warehouse"),
-      TestHiveContext.makeScratchDir(),
-      HiveUtils.newTemporaryConfiguration(useInMemoryDerby = false),
-      None,
-      loadTestTables)
+  protected def sc: SparkContext
+
+  protected def existingSharedState: Option[SharedState]
+
+  protected def loadTestTables: Boolean
+
+  def hiveDefaultTableFilePath(name: TableIdentifier): String
+
+  def getCachedDataSourceTable(table: TableIdentifier): LogicalPlan
+
+  def metadataHive: HiveClient
+
+  def reset(): Unit
+
+  { // set the metastore temporary configuration
+    val metastoreTempConf = HiveUtils.newTemporaryConfiguration(useInMemoryDerby = false) ++ Map(
+      ConfVars.METASTORE_INTEGER_JDO_PUSHDOWN.varname -> "true",
+      // scratch directory used by Hive's metastore client
+      ConfVars.SCRATCHDIR.varname -> TestHiveContext.makeScratchDir().toURI.toString,
+      ConfVars.METASTORE_CLIENT_CONNECT_RETRY_DELAY.varname -> "1")
+
+    metastoreTempConf.foreach { case (k, v) =>
+      sc.hadoopConfiguration.set(k, v)
+    }
   }
 
   assume(sc.conf.get(CATALOG_IMPLEMENTATION) == "hive")
 
-  // TODO: Let's remove TestHiveSharedState and TestHiveSessionState. Otherwise,
-  // we are not really testing the reflection logic based on the setting of
-  // CATALOG_IMPLEMENTATION.
   @transient
-  override lazy val sharedState: TestHiveSharedState = {
-    existingSharedState.getOrElse(
-      new TestHiveSharedState(sc, warehousePath, scratchDirPath, metastoreTemporaryConf))
-  }
-
-  @transient
-  override lazy val sessionState: TestHiveSessionState =
-    new TestHiveSessionState(self, warehousePath)
-
-  override def newSession(): TestHiveSparkSession = {
-    new TestHiveSparkSession(
-      sc, warehousePath, scratchDirPath, metastoreTemporaryConf, Some(sharedState), loadTestTables)
+  override lazy val sharedState: SharedState = {
+    existingSharedState.getOrElse(new SharedState(sc))
   }
 
   private var cacheTables: Boolean = false
@@ -199,6 +185,18 @@ private[hive] class TestHiveSparkSession(
     new File(Thread.currentThread().getContextClassLoader.getResource(path).getFile)
   }
 
+  private def quoteHiveFile(path : String) = if (Utils.isWindows) {
+    getHiveFile(path).getPath.replace('\\', '/')
+  } else {
+    getHiveFile(path).getPath
+  }
+
+  def getWarehousePath(): String = {
+    val tempConf = new SQLConf
+    sc.conf.getAll.foreach { case (k, v) => tempConf.setConfString(k, v) }
+    tempConf.warehousePath
+  }
+
   val describedTable = "DESCRIBE (\\w+)".r
 
   case class TestTable(name: String, commands: (() => Unit)*)
@@ -228,16 +226,16 @@ private[hive] class TestHiveSparkSession(
     val hiveQTestUtilTables: Seq[TestTable] = Seq(
       TestTable("src",
         "CREATE TABLE src (key INT, value STRING)".cmd,
-        s"LOAD DATA LOCAL INPATH '${getHiveFile("data/files/kv1.txt")}' INTO TABLE src".cmd),
+        s"LOAD DATA LOCAL INPATH '${quoteHiveFile("data/files/kv1.txt")}' INTO TABLE src".cmd),
       TestTable("src1",
         "CREATE TABLE src1 (key INT, value STRING)".cmd,
-        s"LOAD DATA LOCAL INPATH '${getHiveFile("data/files/kv3.txt")}' INTO TABLE src1".cmd),
+        s"LOAD DATA LOCAL INPATH '${quoteHiveFile("data/files/kv3.txt")}' INTO TABLE src1".cmd),
       TestTable("srcpart", () => {
         sql(
           "CREATE TABLE srcpart (key INT, value STRING) PARTITIONED BY (ds STRING, hr STRING)")
         for (ds <- Seq("2008-04-08", "2008-04-09"); hr <- Seq("11", "12")) {
           sql(
-            s"""LOAD DATA LOCAL INPATH '${getHiveFile("data/files/kv1.txt")}'
+            s"""LOAD DATA LOCAL INPATH '${quoteHiveFile("data/files/kv1.txt")}'
                |OVERWRITE INTO TABLE srcpart PARTITION (ds='$ds',hr='$hr')
              """.stripMargin)
         }
@@ -247,7 +245,7 @@ private[hive] class TestHiveSparkSession(
           "CREATE TABLE srcpart1 (key INT, value STRING) PARTITIONED BY (ds STRING, hr INT)")
         for (ds <- Seq("2008-04-08", "2008-04-09"); hr <- 11 to 12) {
           sql(
-            s"""LOAD DATA LOCAL INPATH '${getHiveFile("data/files/kv1.txt")}'
+            s"""LOAD DATA LOCAL INPATH '${quoteHiveFile("data/files/kv1.txt")}'
                |OVERWRITE INTO TABLE srcpart1 PARTITION (ds='$ds',hr='$hr')
              """.stripMargin)
         }
@@ -272,7 +270,7 @@ private[hive] class TestHiveSparkSession(
 
         sql(
           s"""
-             |LOAD DATA LOCAL INPATH '${getHiveFile("data/files/complex.seq")}'
+             |LOAD DATA LOCAL INPATH '${quoteHiveFile("data/files/complex.seq")}'
              |INTO TABLE src_thrift
            """.stripMargin)
       }),
@@ -311,7 +309,7 @@ private[hive] class TestHiveSparkSession(
            |)
          """.stripMargin.cmd,
         s"""
-           |LOAD DATA LOCAL INPATH '${getHiveFile("data/files/episodes.avro")}'
+           |LOAD DATA LOCAL INPATH '${quoteHiveFile("data/files/episodes.avro")}'
            |INTO TABLE episodes
          """.stripMargin.cmd
       ),
@@ -382,13 +380,13 @@ private[hive] class TestHiveSparkSession(
       TestTable("src_json",
         s"""CREATE TABLE src_json (json STRING) STORED AS TEXTFILE
          """.stripMargin.cmd,
-        s"LOAD DATA LOCAL INPATH '${getHiveFile("data/files/json.txt")}' INTO TABLE src_json".cmd)
+        s"LOAD DATA LOCAL INPATH '${quoteHiveFile("data/files/json.txt")}' INTO TABLE src_json".cmd)
     )
 
     hiveQTestUtilTables.foreach(registerTestTable)
   }
 
-  private val loadedTables = new collection.mutable.HashSet[String]
+  protected val loadedTables = new collection.mutable.HashSet[String]
 
   def loadTestTable(name: String) {
     if (!(loadedTables contains name)) {
@@ -410,6 +408,38 @@ private[hive] class TestHiveSparkSession(
    * tests.
    */
   protected val originalUDFs: JavaSet[String] = FunctionRegistry.getFunctionNames
+}
+
+private[hive] class TestHiveSparkSessionImpl(
+    @transient protected val sc: SparkContext,
+    @transient protected val existingSharedState: Option[SharedState],
+    protected val loadTestTables: Boolean)
+    extends SparkSession(sc) with TestHiveSparkSession {
+
+  def this(sc: SparkContext, loadTestTables: Boolean) {
+    this(
+      sc,
+      existingSharedState = None,
+      loadTestTables)
+  }
+
+  // TODO: Let's remove TestHiveSessionState. Otherwise, we are not really testing the reflection
+  // logic based on the setting of CATALOG_IMPLEMENTATION.
+  @transient
+  override lazy val sessionState: TestHiveSessionState =
+    new TestHiveSessionState(this)
+
+  override def hiveDefaultTableFilePath(name: TableIdentifier): String =
+    sessionState.catalog.hiveDefaultTableFilePath(name)
+
+  override def getCachedDataSourceTable(table: TableIdentifier): LogicalPlan =
+    sessionState.catalog.getCachedDataSourceTable(table)
+
+  override def metadataHive: HiveClient = sessionState.metadataHive
+
+  override def newSession(): TestHiveSparkSession = {
+    new TestHiveSparkSessionImpl(sc, Some(sharedState), loadTestTables)
+  }
 
   /**
    * Resets the test instance by deleting any tables that have been created.
@@ -425,6 +455,7 @@ private[hive] class TestHiveSparkSession(
         }
       }
 
+      val sessionState = this.sessionState.asInstanceOf[TestHiveSessionState]
       sharedState.cacheManager.clearCache()
       loadedTables.clear()
       sessionState.catalog.clearTempTables()
@@ -489,41 +520,8 @@ private[hive] class TestHiveQueryExecution(
   }
 }
 
-
-private[hive] class TestHiveFunctionRegistry extends SimpleFunctionRegistry {
-
-  private val removedFunctions =
-    collection.mutable.ArrayBuffer.empty[(String, (ExpressionInfo, FunctionBuilder))]
-
-  def unregisterFunction(name: String): Unit = synchronized {
-    functionBuilders.remove(name).foreach(f => removedFunctions += name -> f)
-  }
-
-  def restore(): Unit = synchronized {
-    removedFunctions.foreach {
-      case (name, (info, builder)) => registerFunction(name, info, builder)
-    }
-  }
-}
-
-
-private[hive] class TestHiveSharedState(
-    sc: SparkContext,
-    warehousePath: File,
-    scratchDirPath: File,
-    metastoreTemporaryConf: Map[String, String])
-  extends HiveSharedState(sc) {
-
-  override lazy val metadataHive: HiveClient = {
-    TestHiveContext.newClientForMetadata(
-      sc.conf, sc.hadoopConfiguration, warehousePath, scratchDirPath, metastoreTemporaryConf)
-  }
-}
-
-
 private[hive] class TestHiveSessionState(
-    sparkSession: TestHiveSparkSession,
-    warehousePath: File)
+    sparkSession: TestHiveSparkSession)
   extends HiveSessionState(sparkSession) { self =>
 
   override lazy val conf: SQLConf = {
@@ -533,19 +531,8 @@ private[hive] class TestHiveSessionState(
       override def clear(): Unit = {
         super.clear()
         TestHiveContext.overrideConfs.foreach { case (k, v) => setConfString(k, v) }
-        setConfString("hive.metastore.warehouse.dir", self.warehousePath.toURI.toString)
       }
     }
-  }
-
-  override lazy val functionRegistry: TestHiveFunctionRegistry = {
-    // We use TestHiveFunctionRegistry at here to track functions that have been explicitly
-    // unregistered (through TestHiveFunctionRegistry.unregisterFunction method).
-    val fr = new TestHiveFunctionRegistry
-    org.apache.spark.sql.catalyst.analysis.FunctionRegistry.expressions.foreach {
-      case (name, (info, builder)) => fr.registerFunction(name, info, builder)
-    }
-    fr
   }
 
   override def executePlan(plan: LogicalPlan): TestHiveQueryExecution = {
@@ -554,7 +541,7 @@ private[hive] class TestHiveSessionState(
 }
 
 
-private[hive] object TestHiveContext {
+object TestHiveContext {
 
   /**
    * A map used to store all confs that need to be overridden in sql/hive unit tests.
@@ -565,36 +552,22 @@ private[hive] object TestHiveContext {
       SQLConf.SHUFFLE_PARTITIONS.key -> "5"
     )
 
-  /**
-   * Create a [[HiveClient]] used to retrieve metadata from the Hive MetaStore.
-   */
-  def newClientForMetadata(
-      conf: SparkConf,
-      hadoopConf: Configuration,
-      warehousePath: File,
-      scratchDirPath: File,
-      metastoreTemporaryConf: Map[String, String]): HiveClient = {
-    HiveUtils.newClientForMetadata(
-      conf,
-      hadoopConf,
-      hiveClientConfigurations(hadoopConf, warehousePath, scratchDirPath, metastoreTemporaryConf))
+  private def newSparkSession(sparkContext: SparkContext,
+      loadTestTables: Boolean): TestHiveSparkSession = {
+    val sc = HiveUtils.withHiveExternalCatalog(sparkContext)
+    try {
+      Utils.classForName("org.apache.spark.sql.hive.TestHiveSnappySession")
+          .getConstructor(classOf[SparkContext], classOf[Boolean])
+          .newInstance(sc, Boolean.box(loadTestTables)).asInstanceOf[TestHiveSparkSession]
+    } catch {
+      case _: Exception => new TestHiveSparkSessionImpl(sc, loadTestTables)
+    }
   }
 
-  /**
-   * Configurations needed to create a [[HiveClient]].
-   */
-  def hiveClientConfigurations(
-      hadoopConf: Configuration,
-      warehousePath: File,
-      scratchDirPath: File,
-      metastoreTemporaryConf: Map[String, String]): Map[String, String] = {
-    HiveUtils.hiveClientConfigurations(hadoopConf) ++ metastoreTemporaryConf ++ Map(
-      // Override WAREHOUSE_PATH and METASTOREWAREHOUSE to use the given path.
-      SQLConf.WAREHOUSE_PATH.key -> warehousePath.toURI.toString,
-      ConfVars.METASTOREWAREHOUSE.varname -> warehousePath.toURI.toString,
-      ConfVars.METASTORE_INTEGER_JDO_PUSHDOWN.varname -> "true",
-      ConfVars.SCRATCHDIR.varname -> scratchDirPath.toURI.toString,
-      ConfVars.METASTORE_CLIENT_CONNECT_RETRY_DELAY.varname -> "1")
+  def makeWarehouseDir(): File = {
+    val warehouseDir = Utils.createTempDir(namePrefix = "warehouse")
+    warehouseDir.delete()
+    warehouseDir
   }
 
   def makeScratchDir(): File = {

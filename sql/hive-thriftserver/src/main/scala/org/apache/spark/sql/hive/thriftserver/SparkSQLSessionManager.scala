@@ -14,6 +14,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/*
+ * Changes for SnappyData data platform.
+ *
+ * Portions Copyright (c) 2017-2019 TIBCO Software Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you
+ * may not use this file except in compliance with the License. You
+ * may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied. See the License for the specific language governing
+ * permissions and limitations under the License. See accompanying
+ * LICENSE file.
+ */
 
 package org.apache.spark.sql.hive.thriftserver
 
@@ -28,7 +46,7 @@ import org.apache.hive.service.cli.thrift.TProtocolVersion
 import org.apache.hive.service.server.HiveServer2
 
 import org.apache.spark.sql.SQLContext
-import org.apache.spark.sql.hive.{HiveSessionState, HiveUtils}
+import org.apache.spark.sql.hive.HiveUtils
 import org.apache.spark.sql.hive.thriftserver.ReflectionUtils._
 import org.apache.spark.sql.hive.thriftserver.server.SparkSQLOperationManager
 
@@ -72,21 +90,33 @@ private[hive] class SparkSQLSessionManager(hiveServer: HiveServer2, sqlContext: 
     val session = super.getSession(sessionHandle)
     HiveThriftServer2.listener.onSessionCreated(
       session.getIpAddress, sessionHandle.getSessionId.toString, session.getUsername)
-    val sessionState = sqlContext.sessionState.asInstanceOf[HiveSessionState]
-    val ctx = if (sessionState.hiveThriftServerSingleSession) {
+    val ctx = if (sqlContext.sparkContext.conf.getBoolean(
+      "spark.sql.hive.thriftServer.singleSession", defaultValue = false)) {
       sqlContext
     } else {
       sqlContext.newSession()
     }
+    ctx.setConf("snappydata.sql.planCaching", "true")
     ctx.setConf("spark.sql.hive.version", HiveUtils.hiveExecutionVersion)
-    sparkSqlOperationManager.sessionToContexts += sessionHandle -> ctx
+    if ((username ne null) && !username.isEmpty) {
+      ctx.setConf("user", username)
+      if (passwd ne null) {
+        ctx.setConf("password", passwd)
+      }
+    }
+    // trigger SnappyData authentication at this point
+    ctx.setConf("snappydata.auth.trigger", "true")
+    if (sessionConf != null && sessionConf.containsKey("use:database")) {
+      ctx.sql(s"use ${sessionConf.get("use:database")}")
+    }
+    sparkSqlOperationManager.sessionToContexts.put(sessionHandle, ctx)
     sessionHandle
   }
 
   override def closeSession(sessionHandle: SessionHandle) {
     HiveThriftServer2.listener.onSessionClosed(sessionHandle.getSessionId.toString)
     super.closeSession(sessionHandle)
-    sparkSqlOperationManager.sessionToActivePool -= sessionHandle
+    sparkSqlOperationManager.sessionToActivePool.remove(sessionHandle)
     sparkSqlOperationManager.sessionToContexts.remove(sessionHandle)
   }
 }

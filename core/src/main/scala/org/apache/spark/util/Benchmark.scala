@@ -70,11 +70,27 @@ private[spark] class Benchmark(
    * @param numIters if non-zero, forces exactly this many iterations to be run
    */
   def addCase(name: String, numIters: Int = 0)(f: Int => Unit): Unit = {
-    addTimerCase(name, numIters) { timer =>
+    addCase(name, numIters, () => {}, () => {})(f)
+  }
+
+  /**
+   * Adds a case to run when run() is called. The given function will be run for several
+   * iterations to collect timing statistics.
+   *
+   * @param name of the benchmark case
+   * @param numIters if non-zero, forces exactly this many iterations to be run
+   */
+  def addCase(
+      name: String,
+      numIters: Int,
+      prepare: () => Unit,
+      cleanup: () => Unit)(f: Int => Unit): Unit = {
+    val timedF = (timer: Benchmark.Timer) => {
       timer.startTiming()
       f(timer.iteration)
       timer.stopTiming()
     }
+    benchmarks += Benchmark.Case(name, timedF, numIters, prepare, cleanup)
   }
 
   /**
@@ -101,7 +117,12 @@ private[spark] class Benchmark(
 
     val results = benchmarks.map { c =>
       println("  Running case: " + c.name)
-      measure(valuesPerIteration, c.numIters)(c.fn)
+      try {
+        c.prepare()
+        measure(valuesPerIteration, c.numIters)(c.fn)
+      } finally {
+        c.cleanup()
+      }
     }
     println
 
@@ -188,7 +209,12 @@ private[spark] object Benchmark {
     }
   }
 
-  case class Case(name: String, fn: Timer => Unit, numIters: Int)
+  case class Case(
+      name: String,
+      fn: Timer => Unit,
+      numIters: Int,
+      prepare: () => Unit = () => { },
+      cleanup: () => Unit = () => { })
   case class Result(avgMs: Double, bestRate: Double, bestMs: Double)
 
   /**

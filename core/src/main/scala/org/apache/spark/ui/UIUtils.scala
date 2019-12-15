@@ -21,6 +21,7 @@ import java.net.URLDecoder
 import java.text.SimpleDateFormat
 import java.util.{Date, Locale, TimeZone}
 
+import scala.collection.mutable.HashMap
 import scala.util.control.NonFatal
 import scala.xml._
 import scala.xml.transform.{RewriteRule, RuleTransformer}
@@ -36,7 +37,8 @@ private[spark] object UIUtils extends Logging {
 
   // SimpleDateFormat is not thread-safe. Don't expose it to avoid improper use.
   private val dateFormat = new ThreadLocal[SimpleDateFormat]() {
-    override def initialValue(): SimpleDateFormat = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss")
+    override def initialValue(): SimpleDateFormat =
+      new SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.US)
   }
 
   def formatDate(date: Date): String = dateFormat.get.format(date)
@@ -170,6 +172,16 @@ private[spark] object UIUtils extends Logging {
     <script src={prependBaseUri("/static/timeline-view.js")}></script>
     <script src={prependBaseUri("/static/log-view.js")}></script>
     <script src={prependBaseUri("/static/webui.js")}></script>
+    <script>setUIRoot('{UIUtils.uiRoot}')</script>
+  }
+
+  def commonHeaderNodesSnappy: Seq[Node] = {
+      <link rel="stylesheet" href={prependBaseUri("/static/snappydata/snappy-dashboard.css")}
+            type="text/css"/>
+      <script src={prependBaseUri("/static/snappydata/d3.js")}></script>
+      <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+      <script src={prependBaseUri("/static/snappydata/jquery.sparkline.min.js")}></script>
+      <script src={prependBaseUri("/static/snappydata/snappy-commons.js")}></script>
   }
 
   def vizHeaderNodes: Seq[Node] = {
@@ -202,10 +214,11 @@ private[spark] object UIUtils extends Logging {
       refreshInterval: Option[Int] = None,
       helpText: Option[String] = None,
       showVisualization: Boolean = false,
-      useDataTables: Boolean = false): Seq[Node] = {
+      useDataTables: Boolean = false,
+      isSnappyPage: Boolean = false): Seq[Node] = {
 
     val appName = activeTab.appName
-    val shortAppName = if (appName.length < 36) appName else appName.take(32) + "..."
+    // val shortAppName = if (appName.length < 36) appName else appName.take(32) + "..."
     val header = activeTab.headerTabs.map { tab =>
       <li class={if (tab == activeTab) "active" else ""}>
         <a href={prependBaseUri(activeTab.basePath, "/" + tab.prefix + "/")}>{tab.name}</a>
@@ -213,37 +226,75 @@ private[spark] object UIUtils extends Logging {
     }
     val helpButton: Seq[Node] = helpText.map(tooltip(_, "bottom")).getOrElse(Seq.empty)
 
+    val pageTitleNodes: Seq[Node] = {
+      <div class="row-fluid">
+        <div class="span12">
+          <h3 style="vertical-align: bottom; display: inline-block;">
+            {title}
+            {helpButton}
+          </h3>
+        </div>
+      </div>
+    }
+
     <html>
       <head>
         {commonHeaderNodes}
         {if (showVisualization) vizHeaderNodes else Seq.empty}
         {if (useDataTables) dataTablesHeaderNodes else Seq.empty}
+        {if (isSnappyPage) commonHeaderNodesSnappy else Seq.empty}
         <title>{appName} - {title}</title>
       </head>
       <body>
         <div class="navbar navbar-static-top">
           <div class="navbar-inner">
-            <div class="brand">
-              <a href={prependBaseUri("/")} class="brand">
-                <img src={prependBaseUri("/static/spark-logo-77x50px-hd.png")} />
-                <span class="version">{org.apache.spark.SPARK_VERSION}</span>
-              </a>
-            </div>
-            <p class="navbar-text pull-right">
-              <strong title={appName}>{shortAppName}</strong> application UI
-            </p>
+            {
+              val snappyVersionDetails = SparkUI.getProductVersion
+              val isEnterprise = {
+                val isEnt = snappyVersionDetails.getOrElse("editionType", "")
+                if (!isEnt.isEmpty && isEnt.equalsIgnoreCase("Enterprise")) {
+                  true
+                } else {
+                  false
+                }
+              }
+              if (isEnterprise) {
+                <div class="product-brand">
+                  <a href={prependBaseUri("/")} class="brand" style="padding-top: 8px;">
+                    <img src={prependBaseUri("/static/snappydata/tibco-computdb-274X35.png")} />
+                  </a>
+                </div>
+                <div class="brand" style="line-height: 2.5;">
+                  <img src={prependBaseUri("/static/snappydata/helpicon-18X18.png")}
+                       style="cursor: pointer;"
+                       onclick="displayVersionDetails()" />
+                  {getProductVersionNode}
+                </div>
+              } else {
+                <div class="product-brand">
+                  <a href={prependBaseUri("/")} class="brand">
+                    <img src={prependBaseUri("/static/snappydata/pulse-snappydata-152X50.png")} />
+                  </a>
+                </div>
+                <div class="brand" style="line-height: 2.5;">
+                  <a class="brand" href="https://www.snappydata.io/" target="_blank">
+                    <img src={prependBaseUri("/static/snappydata/snappydata-175X28.png")}
+                         style="cursor: pointer;" />
+                  </a>
+                </div>
+                <div class="brand" style="line-height: 2.5;">
+                  <img src={prependBaseUri("/static/snappydata/helpicon-18X18.png")}
+                       style="cursor: pointer;"
+                       onclick="displayVersionDetails()" />
+                  {getProductVersionNode}
+                </div>
+              }
+            }
             <ul class="nav">{header}</ul>
           </div>
         </div>
         <div class="container-fluid">
-          <div class="row-fluid">
-            <div class="span12">
-              <h3 style="vertical-align: bottom; display: inline-block;">
-                {title}
-                {helpButton}
-              </h3>
-            </div>
-          </div>
+          {if (!isSnappyPage) pageTitleNodes else Seq.empty }
           {content}
         </div>
       </body>
@@ -420,8 +471,8 @@ private[spark] object UIUtils extends Logging {
    * the whole string will rendered as a simple escaped text.
    *
    * Note: In terms of security, only anchor tags with root relative links are supported. So any
-   * attempts to embed links outside Spark UI, or other tags like <script> will cause in the whole
-   * description to be treated as plain text.
+   * attempts to embed links outside Spark UI, or other tags like {@code <script>} will cause in
+   * the whole description to be treated as plain text.
    *
    * @param desc        the original job or stage description string, which may contain html tags.
    * @param basePathUri with which to prepend the relative links; this is used when plainText is
@@ -510,4 +561,98 @@ private[spark] object UIUtils extends Logging {
 
   def getTimeZoneOffset() : Int =
     TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000 / 60
+
+  /**
+  * Return the correct Href after checking if master is running in the
+  * reverse proxy mode or not.
+  */
+  def makeHref(proxy: Boolean, id: String, origHref: String): String = {
+    if (proxy) {
+      s"/proxy/$id"
+    } else {
+      origHref
+    }
+  }
+
+  def getProductVersionNode(): Node = {
+      val snappyVersionDetails = SparkUI.getProductVersion
+      <div class="popup" style="z-index: 3;">
+      <div class="popuptext" id="sdVersionDetails">
+        <div>
+          <img src="/static/snappydata/cross.png" onclick="displayVersionDetails()"
+               style="float:right; cursor: pointer;"></img>
+        </div>
+        <div>
+          {
+            val isEnterprise = {
+              val isEnt = snappyVersionDetails.getOrElse("editionType", "")
+              if (!isEnt.isEmpty && isEnt.equalsIgnoreCase("Enterprise")) {
+                true
+              } else {
+                false
+              }
+            }
+            if(isEnterprise) {
+              <p>
+                <strong>TIBCO<sup>&reg;</sup> ComputeDB<sup>&trade;</sup>
+                  - Enterprise Edition</strong> <br />
+                <br />&copy; 2017-2019 TIBCO<sup>&reg;</sup> Software Inc. All rights reserved.
+                <br />This program is protected by copyright law.
+              </p>
+              <p>
+                Build Version: {snappyVersionDetails.getOrElse("productVersion", "")} <br/>
+                Build Date: {
+                  val buildDateStr = snappyVersionDetails.getOrElse("buildDate", "");
+                  if (!buildDateStr.isEmpty) {
+                    buildDateStr.substring(0, buildDateStr.indexOf(" "))
+                  } else ""
+                } <br/>
+                Spark Version: {org.apache.spark.SPARK_VERSION}
+              </p>
+              <p>
+                For assistance, get started at: <br />
+                <a href="https://www.tibco.com/" target="_blank">https://www.tibco.com/</a> <br />
+                <a href={"https://tibco-computedb.readthedocs.io/en/enterprise_docv" +
+                    snappyVersionDetails.getOrElse("productVersion", "") + "/"}
+                   target="_blank">
+                  Product Documentation
+                </a>
+              </p>
+            } else {
+              <p>
+                <strong>Project SnappyData<sup>&trade;</sup> - Community Edition </strong> <br />
+                <br />&copy; 2017-2019 TIBCO<sup>&reg;</sup> Software Inc. All rights reserved.
+                <br />This program is protected by copyright law.
+              </p>
+              <p>
+                Build Version: {snappyVersionDetails.getOrElse("productVersion", "")} <br/>
+                Build : {
+                  snappyVersionDetails.getOrElse("buildId", "") + " " +
+                  snappyVersionDetails.getOrElse("buildDate", "")
+                } <br/>
+                Source Revision : {snappyVersionDetails.getOrElse("sourceRevision", "")} <br/>
+                Spark Version: {org.apache.spark.SPARK_VERSION}
+              </p>
+              <p>
+                For assistance, get started at: <br />
+                <a href="https://www.snappydata.io/community" target="_blank">
+                  https://www.snappydata.io/community</a> <br />
+                <a href="https://www.tibco.com/" target="_blank">https://www.tibco.com/</a> <br />
+                <a href="http://snappydatainc.github.io/snappydata/" target="_blank">
+                  Product Documentation
+                </a>
+              </p>
+            }
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  def getProductDocLinkNode(): Node = {
+    <p class="navbar-text pull-right " style="padding-right:20px;">
+      <a href="http://snappydatainc.github.io/snappydata/" target="_blank">Docs</a>
+    </p>
+  }
+
 }

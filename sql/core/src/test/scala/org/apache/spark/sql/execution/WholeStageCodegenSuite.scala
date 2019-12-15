@@ -18,7 +18,6 @@
 package org.apache.spark.sql.execution
 
 import org.apache.spark.sql.Row
-import org.apache.spark.sql.execution.aggregate.HashAggregateExec
 import org.apache.spark.sql.execution.joins.BroadcastHashJoinExec
 import org.apache.spark.sql.expressions.scalalang.typed
 import org.apache.spark.sql.functions.{avg, broadcast, col, max}
@@ -39,7 +38,8 @@ class WholeStageCodegenSuite extends SparkPlanTest with SharedSQLContext {
     val plan = df.queryExecution.executedPlan
     assert(plan.find(p =>
       p.isInstanceOf[WholeStageCodegenExec] &&
-        p.asInstanceOf[WholeStageCodegenExec].child.isInstanceOf[HashAggregateExec]).isDefined)
+        p.asInstanceOf[WholeStageCodegenExec].child.getClass.getName.contains(
+          "HashAggregateExec")).isDefined)
     assert(df.collect() === Array(Row(9, 4.5)))
   }
 
@@ -48,7 +48,8 @@ class WholeStageCodegenSuite extends SparkPlanTest with SharedSQLContext {
     val plan = df.queryExecution.executedPlan
     assert(plan.find(p =>
       p.isInstanceOf[WholeStageCodegenExec] &&
-        p.asInstanceOf[WholeStageCodegenExec].child.isInstanceOf[HashAggregateExec]).isDefined)
+        p.asInstanceOf[WholeStageCodegenExec].child.getClass.getName.contains(
+          "HashAggregateExec")).isDefined)
     assert(df.collect() === Array(Row(0, 1), Row(1, 1), Row(2, 1)))
   }
 
@@ -110,7 +111,20 @@ class WholeStageCodegenSuite extends SparkPlanTest with SharedSQLContext {
     val plan = ds.queryExecution.executedPlan
     assert(plan.find(p =>
       p.isInstanceOf[WholeStageCodegenExec] &&
-        p.asInstanceOf[WholeStageCodegenExec].child.isInstanceOf[HashAggregateExec]).isDefined)
+        p.asInstanceOf[WholeStageCodegenExec].child.getClass.getName.contains(
+          "HashAggregateExec")).isDefined)
     assert(ds.collect() === Array(("a", 10.0), ("b", 3.0), ("c", 1.0)))
+  }
+
+  test("SPARK-19512 codegen for comparing structs is incorrect") {
+    // this would raise CompileException before the fix
+    spark.range(10)
+      .selectExpr("named_struct('a', id) as col1", "named_struct('a', id+2) as col2")
+      .filter("col1 = col2").count()
+    // this would raise java.lang.IndexOutOfBoundsException before the fix
+    spark.range(10)
+      .selectExpr("named_struct('a', id, 'b', id) as col1",
+        "named_struct('a',id+2, 'b',id+2) as col2")
+      .filter("col1 = col2").count()
   }
 }

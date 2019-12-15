@@ -23,6 +23,8 @@
 /lib/
 R-unit-tests.log
 R/unit-tests.out
+R/cran-check.out
+R/pkg/vignettes/sparkr-vignettes.html
 build/*.jar
 build/apache-maven*
 build/scala*
@@ -36,6 +38,7 @@ conf/*.sh
 conf/*.xml
 conf/java-opts
 conf/slaves
+core/src/main/extra-resources
 dependency-reduced-pom.xml
 derby.log
 dev/create-release/*final
@@ -55,6 +58,8 @@ project/plugins/project/build.properties
 project/plugins/src_managed/
 project/plugins/target/
 python/lib/pyspark.zip
+python/deps
+python/pyspark/python
 reports/
 scalastyle-on-compile.generated.xml
 scalastyle-output.xml
@@ -64,6 +69,7 @@ spark-tests.log
 src_managed/
 streaming-tests.log
 target/
+build-artifacts/
 unit-tests.log
 work/
 
@@ -82,3 +88,7 @@ spark-warehouse/
 *.Rproj
 *.Rproj.*
 
+.Rproj.user
+
+# gradle specific
+.gradle/
