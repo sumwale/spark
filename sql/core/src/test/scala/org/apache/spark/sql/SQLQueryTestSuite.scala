@@ -14,6 +14,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/*
+ * Changes for TIBCO Project SnappyData data platform.
+ *
+ * Portions Copyright (c) 2017-2020 TIBCO Software Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you
+ * may not use this file except in compliance with the License. You
+ * may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied. See the License for the specific language governing
+ * permissions and limitations under the License. See accompanying
+ * LICENSE file.
+ */
 
 package org.apache.spark.sql
 
@@ -277,8 +295,8 @@ class SQLQueryTestSuite extends QueryTest with SharedSQLContext {
       // Get answer, but also get rid of the #1234 expression ids that show up in explain plans
       val answer = df.queryExecution.hiveResultString().map(_.replaceAll("#\\d+", "#x")
         .replaceAll(
-          s"Location.*/sql/core/spark-warehouse/$clsName/",
-          s"Location ${notIncludedMsg}sql/core/spark-warehouse/")
+          s"Location.*/spark-warehouse/$clsName/",
+          s"Location $notIncludedMsg/spark-warehouse/")
         .replaceAll("Created By.*", s"Created By $notIncludedMsg")
         .replaceAll("Created Time.*", s"Created Time $notIncludedMsg")
         .replaceAll("Last Access.*", s"Last Access $notIncludedMsg")
