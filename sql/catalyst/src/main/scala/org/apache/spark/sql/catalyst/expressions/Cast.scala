@@ -164,7 +164,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
         } else if (StringUtils.isFalseString(s)) {
           false
         } else {
-          if (failFastTypeCastingEnabled) {
+          if (failOnCastErrorEnabled) {
             throw new RuntimeException(s"Can not cast '$s' to ${BooleanType.simpleString}.")
           } else {
             null
@@ -225,7 +225,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
 
   private[this] def doubleToTimestamp(d: Double): Any = {
     if (d.isNaN || d.isInfinite) {
-      if (failFastTypeCastingEnabled) {
+      if (failOnCastErrorEnabled) {
         throw new TypeCastException(DoubleType, TimestampType, d)
       } else {
         null
@@ -247,7 +247,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
   private[this] def castToDate(from: DataType): Any => Any = from match {
     case StringType =>
       buildCast[UTF8String](_, s => DateTimeUtils.stringToDate(s).getOrElse(() => {
-        if (failFastTypeCastingEnabled) {
+        if (failOnCastErrorEnabled) {
           throw new TypeCastException(StringType, DateType, s)
         } else {
           null
@@ -269,7 +269,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
   private[this] def castToLong(from: DataType): Any => Any = from match {
     case StringType =>
       buildCast[UTF8String](_, s => try s.toLong catch {
-        case _: NumberFormatException => if (failFastTypeCastingEnabled) {
+        case _: NumberFormatException => if (failOnCastErrorEnabled) {
           throw new TypeCastException(StringType, LongType, s)
         } else {
           null
@@ -289,7 +289,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
   private[this] def castToInt(from: DataType): Any => Any = from match {
     case StringType =>
       buildCast[UTF8String](_, s => try s.toInt catch {
-        case _: NumberFormatException => if (failFastTypeCastingEnabled) {
+        case _: NumberFormatException => if (failOnCastErrorEnabled) {
           throw new TypeCastException(StringType, IntegerType, s)
         } else {
           null
@@ -309,7 +309,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
   private[this] def castToShort(from: DataType): Any => Any = from match {
     case StringType =>
       buildCast[UTF8String](_, s => try s.toShort catch {
-        case _: NumberFormatException => if (failFastTypeCastingEnabled) {
+        case _: NumberFormatException => if (failOnCastErrorEnabled) {
           throw new TypeCastException(StringType, ShortType, s)
         } else {
           null
@@ -329,7 +329,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
   private[this] def castToByte(from: DataType): Any => Any = from match {
     case StringType =>
       buildCast[UTF8String](_, s => try s.toByte catch {
-        case _: NumberFormatException => if (failFastTypeCastingEnabled) {
+        case _: NumberFormatException => if (failOnCastErrorEnabled) {
           throw new TypeCastException(StringType, ByteType, s)
         } else {
           null
@@ -355,7 +355,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
     if (value.changePrecision(decimalType.precision, decimalType.scale)) {
       value
     } else {
-      if (failFastTypeCastingEnabled) {
+      if (failOnCastErrorEnabled) {
         throw new TypeCastException(DecimalType(value.precision, value.scale), decimalType, value)
       } else {
         null
@@ -368,7 +368,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
       buildCast[UTF8String](_, s => try {
         changePrecision(Decimal(new JavaBigDecimal(s.toString)), target)
       } catch {
-        case _: NumberFormatException => if (failFastTypeCastingEnabled) {
+        case _: NumberFormatException => if (failOnCastErrorEnabled) {
           throw new TypeCastException(StringType, target, s)
         } else {
           null
@@ -389,7 +389,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
       b => try {
         changePrecision(Decimal(x.fractional.asInstanceOf[Fractional[Any]].toDouble(b)), target)
       } catch {
-        case _: NumberFormatException => if (failFastTypeCastingEnabled) {
+        case _: NumberFormatException => if (failOnCastErrorEnabled) {
           throw new TypeCastException(StringType, target, b)
         } else {
           null
@@ -401,7 +401,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
   private[this] def castToDouble(from: DataType): Any => Any = from match {
     case StringType =>
       buildCast[UTF8String](_, s => try s.toString.toDouble catch {
-        case _: NumberFormatException => if (failFastTypeCastingEnabled) {
+        case _: NumberFormatException => if (failOnCastErrorEnabled) {
           throw new TypeCastException(StringType, DoubleType, s)
         } else {
           null
@@ -421,7 +421,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
   private[this] def castToFloat(from: DataType): Any => Any = from match {
     case StringType =>
       buildCast[UTF8String](_, s => try s.toString.toFloat catch {
-        case _: NumberFormatException => if (failFastTypeCastingEnabled) {
+        case _: NumberFormatException => if (failOnCastErrorEnabled) {
           throw new TypeCastException(StringType, FloatType, s)
         } else {
           null
@@ -597,7 +597,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
           $evPrim = ((Integer) $intOpt.get()).intValue();
         } else {
           ${
-            if (failFastTypeCastingEnabled) {
+            if (failOnCastErrorEnabled) {
               s"throw new org.apache.spark.sql.catalyst.expressions.TypeCastException(" +
                   s"${javaDataTypeName(StringType)}, ${javaDataTypeName(DateType)}," +
                   s" $c);"
@@ -621,7 +621,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
         $evPrim = $d;
       } else {
         ${
-          if (failFastTypeCastingEnabled) {
+          if (failOnCastErrorEnabled) {
             s"throw new org.apache.spark.sql.catalyst.expressions.TypeCastException(" +
                 s"$javaDataTypesClassName.createDecimalType($d.precision(), $d.scale())," +
                 s" ${javaDataTypeName(decimalType)}, $d);"
@@ -652,7 +652,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
       case DateType =>
         // date can't cast to decimal in Hive
         (c, evPrim, evNull) =>
-          if (failFastTypeCastingEnabled) {
+          if (failOnCastErrorEnabled) {
             s"throw new org.apache.spark.sql.catalyst.expressions.TypeCastException(" +
                 s"${javaDataTypeName(DateType)}, ${javaDataTypeName(target)}," +
                 s" $c);"
@@ -688,7 +688,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
               ${changePrecision(tmp, target, evPrim, evNull)}
             } catch (java.lang.NumberFormatException e) {
               ${
-                if (failFastTypeCastingEnabled) {
+                if (failOnCastErrorEnabled) {
                   s"throw new org.apache.spark.sql.catalyst.expressions.TypeCastException(" +
                       s"${javaDataTypeName(x)}, ${javaDataTypeName(target)}," +
                       s" $c);"
@@ -714,7 +714,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
             $evPrim = ((Long) $longOpt.get()).longValue();
           } else {
             ${
-              if (failFastTypeCastingEnabled) {
+              if (failOnCastErrorEnabled) {
                 s"throw new org.apache.spark.sql.catalyst.expressions.TypeCastException(" +
                     s"${javaDataTypeName(StringType)}, ${javaDataTypeName(TimestampType)}," +
                     s" $c);"
@@ -738,7 +738,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
         s"""
           if (Double.isNaN($c) || Double.isInfinite($c)) {
             ${
-              if (failFastTypeCastingEnabled) {
+              if (failOnCastErrorEnabled) {
                 s"throw new org.apache.spark.sql.catalyst.expressions.TypeCastException(" +
                     s"${javaDataTypeName(DoubleType)}, ${javaDataTypeName(TimestampType)}," +
                     s" $c);"
@@ -755,7 +755,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
         s"""
           if (Float.isNaN($c) || Float.isInfinite($c)) {
             ${
-              if (failFastTypeCastingEnabled) {
+              if (failOnCastErrorEnabled) {
                 s"throw new org.apache.spark.sql.catalyst.expressions.TypeCastException(" +
                     s"${javaDataTypeName(FloatType)}, ${javaDataTypeName(TimestampType)}," +
                     s" $c);"
@@ -798,7 +798,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
             $evPrim = false;
           } else {
             ${
-              if (failFastTypeCastingEnabled) {
+              if (failOnCastErrorEnabled) {
                 s"throw new org.apache.spark.sql.catalyst.expressions.TypeCastException(" +
                     s"${javaDataTypeName(StringType)}, ${javaDataTypeName(BooleanType)}," +
                     s" $c);"
@@ -899,13 +899,13 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
       (c, evPrim, evNull) => s"$evPrim = (float) $c;"
   }
   
-  private def failFastTypeCastingEnabled = {
-    val failFastCasting : String = if (TaskContext.get() != null) {
-      TaskContext.get().getLocalProperty("snappydata.failFastTypeCasting")
+  private def failOnCastErrorEnabled = {
+    val failOnCastError : String = if (TaskContext.get() != null) {
+      TaskContext.get().getLocalProperty("snappydata.failOnCastError")
     } else {
-      SparkContext.activeContext.get().getLocalProperty("snappydata.failFastTypeCasting")
+      SparkContext.activeContext.get().getLocalProperty("snappydata.failOnCastError")
     }
-    Option(failFastCasting) match {
+    Option(failOnCastError) match {
       case Some(value) => value.toBoolean
       case None => false
     }
@@ -945,7 +945,7 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
         $code
       } catch (java.lang.NumberFormatException e) {
         ${
-          if (failFastTypeCastingEnabled) {
+          if (failOnCastErrorEnabled) {
             s"throw new org.apache.spark.sql.catalyst.expressions.TypeCastException(" +
                 s"${javaDataTypeName(StringType)}, ${javaDataTypeName(dataType)}," +
                 s" $c);"

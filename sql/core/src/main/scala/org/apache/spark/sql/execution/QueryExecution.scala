@@ -90,10 +90,10 @@ class QueryExecution(val sparkSession: SparkSession, val logical: LogicalPlan) {
 
   /** Internal version of the RDD. Avoids copies and has no schema */
   lazy val toRdd: RDD[InternalRow] = {
-    // setting snappydata.failFastTypeCasting local property every time before
+    // setting snappydata.failOnCastError local property every time before
     // executing the query to make the change to the property effective
-    sparkSession.sparkContext.setLocalProperty("snappydata.failFastTypeCasting",
-      sparkSession.sessionState.conf.getConfString("snappydata.failFastTypeCasting"))
+    sparkSession.sparkContext.setLocalProperty("snappydata.failOnCastError",
+      sparkSession.sessionState.conf.getConfString("snappydata.failOnCastError"))
 
     executedPlan.execute()
   }
