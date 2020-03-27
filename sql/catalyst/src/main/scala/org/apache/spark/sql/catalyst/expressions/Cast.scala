@@ -610,15 +610,8 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
     case TimestampType =>
       (c, evPrim, evNull) =>
         s"$evPrim = org.apache.spark.sql.catalyst.util.DateTimeUtils.millisToDays($c / 1000L);";
-    case t =>
-      (c, evPrim, evNull) =>
-        if (failFastTypeCastingEnabled) {
-          s"throw new org.apache.spark.sql.catalyst.expressions.TypeCastException(" +
-              s"${javaDataTypeName(t)}, ${javaDataTypeName(DateType)}," +
-              s" $c);"
-        } else {
-          s"$evNull = true;"
-        }
+    case _ =>
+      (c, evPrim, evNull) => s"$evNull = true;"
   }
 
   private[this] def changePrecision(d: String, decimalType: DecimalType,
