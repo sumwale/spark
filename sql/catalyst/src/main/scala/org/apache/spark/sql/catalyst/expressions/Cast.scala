@@ -898,12 +898,14 @@ case class Cast(child: Expression, dataType: DataType) extends UnaryExpression w
     case x: NumericType =>
       (c, evPrim, evNull) => s"$evPrim = (float) $c;"
   }
-  
-  private def failOnCastErrorEnabled = {
-    val failOnCastError : String = if (TaskContext.get() != null) {
+
+  private def failOnCastErrorEnabled: Boolean = {
+    val failOnCastError: String = if (TaskContext.get() != null) {
       TaskContext.get().getLocalProperty("snappydata.failOnCastError")
-    } else {
+    } else if (SparkContext.activeContext.get() != null){
       SparkContext.activeContext.get().getLocalProperty("snappydata.failOnCastError")
+    } else {
+      "false"
     }
     Option(failOnCastError) match {
       case Some(value) => value.toBoolean
