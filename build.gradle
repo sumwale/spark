@@ -44,6 +44,7 @@ allprojects {
   repositories {
     mavenCentral()
     maven { url 'http://repository.apache.org/snapshots' }
+    maven { url 'https://repo.hortonworks.com/content/repositories/releases/' }
   }
 
   apply plugin: 'java'
@@ -70,7 +71,7 @@ allprojects {
     mockitoVersion = '1.10.19'
     javaxServletVersion = '3.1.0'
     guavaVersion = '14.0.1'
-    hiveVersion = '1.2.1.spark2'
+    hiveVersion = '1.21.2.3.1.2.2-1'
     chillVersion = '0.8.5'
     kryoVersion = '4.0.2'
     nettyVersion = '3.10.6.Final'
@@ -118,7 +119,7 @@ allprojects {
     dockerClientVersion = '8.14.5'
     mysqlVersion = '8.0.13'
     postgresqlVersion = '42.2.5'
-    ojdbc6Version = '11.2.0.1.0'
+    ojdbc6Version = '11.2.0.4'
     zookeeperVersion = '3.4.13'
     jets3tVersion = '0.9.4'
     roaringBitmapVersion = '0.6.66'
